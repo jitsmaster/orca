@@ -3,7 +3,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CalendarClock, Plus, RefreshCw, X } from 'lucide-react'
 import { toast } from 'sonner'
-import { filterEnabledTuiAgents, isTuiAgentEnabled } from '../../../../shared/tui-agent-selection'
+import {
+  filterEnabledTuiAgents,
+  isTuiAgentEnabled,
+  toLegacyAutoPreference
+} from '../../../../shared/tui-agent-selection'
 import { Button } from '@/components/ui/button'
 import { installWindowVisibilityInterval } from '@/lib/window-visibility-interval'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -42,9 +46,12 @@ import {
 } from '../../../../shared/automation-schedules'
 import {
   canRerunAutomationRun,
+  getAutomationRunLaunchFailure,
   getAutomationRunViewState,
   waitForAutomationRerunPendingVisibility
 } from './automation-run-view-state'
+import { useConfirmationDialog } from '@/components/confirmation-dialog-context'
+import { forgetLaunchConfirmation } from '@/lib/agent-launch-recovery-action-copy'
 import {
   buildAutomationRunOpenLayout,
   canOpenAutomationRunOpenTarget,
@@ -78,6 +85,7 @@ import type { TaskSourceHostAvailability } from '../task-source-context-summary'
 import {
   createAutomationForTarget,
   deleteAutomationForTarget,
+  forgetAutomationRunForTarget,
   getAutomationHostTargetFromKey,
   getAutomationHostTargetKey,
   getAutomationListTarget,
@@ -153,11 +161,13 @@ export default function AutomationsPage(): React.JSX.Element {
   const repoMap = useRepoMap()
   const worktreeMap = useWorktreeMap()
   const enabledAgents = filterEnabledTuiAgents(AGENTS, settings?.disabledTuiAgents)
+  // 'auto' selects no fixed agent, so fall back to the catalog.
+  const preferredDefaultAgent = toLegacyAutoPreference(settings?.defaultTuiAgent)
   const defaultAgent =
-    settings?.defaultTuiAgent &&
-    settings.defaultTuiAgent !== 'blank' &&
-    isTuiAgentEnabled(settings.defaultTuiAgent, settings.disabledTuiAgents)
-      ? settings.defaultTuiAgent
+    preferredDefaultAgent &&
+    preferredDefaultAgent !== 'blank' &&
+    isTuiAgentEnabled(preferredDefaultAgent, settings?.disabledTuiAgents)
+      ? preferredDefaultAgent
       : (enabledAgents[0] ?? AGENTS[0])
 
   const [automations, setAutomations] = useState<Automation[]>([])
@@ -172,6 +182,8 @@ export default function AutomationsPage(): React.JSX.Element {
   const [rerunRunIdsInFlight, setRerunRunIdsInFlight] = useState<ReadonlySet<string>>(
     () => new Set()
   )
+  const [forgetRunIdInFlight, setForgetRunIdInFlight] = useState<string | null>(null)
+  const confirmDialog = useConfirmationDialog()
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [listSearchQuery, setListSearchQuery] = useState('')
@@ -521,6 +533,9 @@ export default function AutomationsPage(): React.JSX.Element {
             : []
         })
       })
+    : null
+  const selectedAutomationRunPageLaunchFailure = selectedAutomationRunPage
+    ? getAutomationRunLaunchFailure(selectedAutomationRunPage)
     : null
   const canRerunSelectedAutomationRunPage =
     selectedAutomationRunPage !== null &&
@@ -1589,6 +1604,31 @@ export default function AutomationsPage(): React.JSX.Element {
     }
   }
 
+  const forgetAutomationRun = async (run: AutomationRun): Promise<void> => {
+    if (!selected || !(await confirmDialog(forgetLaunchConfirmation()))) {
+      return
+    }
+    setForgetRunIdInFlight(run.id)
+    try {
+      const updated = await forgetAutomationRunForTarget(
+        getAutomationOwnerTarget(selected, automationHostTarget),
+        run.id
+      )
+      setSelectedAutomationRuns((prev) => ({
+        ...prev,
+        runs: prev.runs.map((existing) => (existing.id === updated.id ? updated : existing))
+      }))
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : translate('agentLaunch.forgetConfirm.failed', "Couldn't forget this launch. Try again.")
+      )
+    } finally {
+      setForgetRunIdInFlight(null)
+    }
+  }
+
   const runExternalAction = async (
     manager: ExternalAutomationManager,
     job: ExternalAutomationJob,
@@ -2007,6 +2047,8 @@ export default function AutomationsPage(): React.JSX.Element {
           selectedRunNowAvailability={selectedRunNowAvailability}
           selectedAutomationRunPageWorkspaceDisplay={selectedAutomationRunPageWorkspaceDisplay}
           selectedAutomationRunPageViewState={selectedAutomationRunPageViewState}
+          selectedAutomationRunPageLaunchFailure={selectedAutomationRunPageLaunchFailure}
+          forgetRunIdInFlight={forgetRunIdInFlight}
           canRerunSelectedAutomationRunPage={canRerunSelectedAutomationRunPage}
           isSelectedAutomationRunPageRerunPending={isSelectedAutomationRunPageRerunPending}
           worktreeMap={worktreeMap}
@@ -2022,6 +2064,7 @@ export default function AutomationsPage(): React.JSX.Element {
           toggleAutomation={(automation) => void toggleAutomation(automation)}
           requestDeleteAutomation={requestDeleteAutomation}
           rerunAutomationRun={(automation, run) => void rerunAutomationRun(automation, run)}
+          forgetAutomationRun={(run) => void forgetAutomationRun(run)}
           openRunWorkspace={openRunWorkspace}
           openAutomationRunPage={openAutomationRunPage}
         />
