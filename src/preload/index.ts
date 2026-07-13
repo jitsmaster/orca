@@ -14,6 +14,10 @@ import type {
   TerminalPreviewConnectResult,
   TerminalPreviewDataPayload
 } from '../shared/terminal-preview'
+import type {
+  AgentLaunchNoticeCode,
+  PersistedLaunchNoticeState
+} from '../shared/agent-launch-contract'
 import type { CliInstallStatus } from '../shared/cli-install-types'
 import type { AgentHookInstallStatus } from '../shared/agent-hook-types'
 import type { CodexConfigSyncStatus } from '../shared/codex-config-sync-types'
@@ -60,6 +64,10 @@ import type {
 } from '../shared/plugins/plugin-panel-bridge'
 import type { PluginConsentRequest } from '../shared/plugins/plugin-consent-request'
 import type { PluginChangeEvent } from '../shared/plugins/plugin-change-event'
+import type {
+  AgentLaunchInput,
+  AgentLaunchVaultResumeEntry
+} from '../shared/agent-launch-spawn-request'
 import type {
   BaseRefSearchResult,
   BaseRefDefaultResult,
@@ -824,6 +832,26 @@ const api = {
 
     getBranchRenameFailureOutput: (args) =>
       ipcRenderer.invoke('worktrees:getBranchRenameFailureOutput', args),
+    retryAgentLaunch: (args) => ipcRenderer.invoke('worktrees:retryAgentLaunch', args),
+
+    forgetAgentLaunch: (args) => ipcRenderer.invoke('worktrees:forgetAgentLaunch', args),
+
+    forgetRevokedRemoteAgentLaunch: (args) =>
+      ipcRenderer.invoke('worktrees:forgetRevokedRemoteAgentLaunch', args),
+
+    retryBackgroundAgentLaunch: (args) =>
+      ipcRenderer.invoke('worktrees:retryBackgroundAgentLaunch', args),
+
+    forgetBackgroundAgentLaunch: (args) =>
+      ipcRenderer.invoke('worktrees:forgetBackgroundAgentLaunch', args),
+
+    pendingAgentLaunchSummary: () => ipcRenderer.invoke('worktrees:pendingAgentLaunchSummary'),
+
+    unknownAgentLaunchSiblingCount: (args) =>
+      ipcRenderer.invoke('worktrees:unknownAgentLaunchSiblingCount', args),
+
+    forgetUnknownAgentLaunchSiblings: (args) =>
+      ipcRenderer.invoke('worktrees:forgetUnknownAgentLaunchSiblings', args),
 
     onChanged: (
       callback: (data: {
@@ -940,6 +968,11 @@ const api = {
       resumeProviderSession?: AgentProviderSessionMetadata
       launchToken?: string
       launchAgent?: TuiAgent
+      agentLaunch?: AgentLaunchInput
+      // Why: one-release legacy handoff — a pre-U5 sleeping record surrenders
+      // its recorded execution owner alongside `launchConfig` so the host can
+      // prove the opaque legacy command still targets the same host.
+      legacyResumeRecordedConnectionId?: string | null
       startupCommandDelivery?: StartupCommandDelivery
       connectionId?: string | null
       worktreeId?: string
@@ -952,8 +985,12 @@ const api = {
       // Why: closes the SIGKILL race (INVESTIGATION.md) — main sync-flushes the (worktreeId, tabId, leafId → ptyId) binding before pty:spawn returns.
       tabId?: string
       leafId?: string
-      // Why: loose typing on purpose — renderer owns launch metadata, main owns whether the launch happened and validates (telemetry-plan.md §Agent launch semantics).
-      telemetry?: { agent_kind: AgentKind; launch_source: LaunchSource; request_kind: RequestKind }
+      // Why: telemetry-plan.md§Agent launch semantics — main fires
+      // `agent_started` only after the spawn succeeds. The renderer is the
+      // source of truth for the launch metadata; main is the source of
+      // truth for whether the launch happened. Loose typing here on
+      // purpose: validation lives at the main-side schema validator.
+      telemetry?: { agent_kind?: AgentKind; launch_source: LaunchSource; request_kind: RequestKind }
     }): Promise<{
       id: string
       launchConfig?: SleepingAgentLaunchConfig
@@ -980,6 +1017,15 @@ const api = {
       ipcRenderer.on('pty:writeUnavailable', handler)
       return () => ipcRenderer.removeListener('pty:writeUnavailable', handler)
     },
+
+    /** Ask the host (owner) to dismiss a launch notice for this terminal. */
+    dismissLaunchNotice: (args: {
+      worktreeId: string
+      tabId: string
+      launchToken: string
+      code: AgentLaunchNoticeCode
+    }): Promise<{ ok: boolean; changed: boolean }> =>
+      ipcRenderer.invoke('pty:dismissLaunchNotice', args),
 
     resize: (id: string, cols: number, rows: number): void => {
       ipcRenderer.send('pty:resize', { id, cols, rows })
@@ -2032,6 +2078,24 @@ const api = {
       ): void => callback(updates)
       ipcRenderer.on('settings:changed', listener)
       return () => ipcRenderer.removeListener('settings:changed', listener)
+    },
+
+    agentCatalog: {
+      getLocal: (): Promise<unknown> => ipcRenderer.invoke('settings:agentCatalog:getLocal'),
+      mutate: (request: unknown): Promise<unknown> =>
+        ipcRenderer.invoke('settings:mutateAgentCatalog', request),
+      getLocalDraft: (args: unknown): Promise<unknown> =>
+        ipcRenderer.invoke('settings:agentCatalog:getLocalDraft', args),
+      referenceSummary: (args: unknown): Promise<unknown> =>
+        ipcRenderer.invoke('settings:agentCatalog:referenceSummary', args),
+      baseDisableImpact: (args: unknown): Promise<unknown> =>
+        ipcRenderer.invoke('settings:agentCatalog:baseDisableImpact', args)
+    },
+
+    agentReferences: {
+      getLocal: (): Promise<unknown> => ipcRenderer.invoke('settings:agentReferences:getLocal'),
+      mutate: (request: unknown): Promise<unknown> =>
+        ipcRenderer.invoke('settings:mutateAgentReferences', request)
     }
   },
 
@@ -3801,6 +3865,7 @@ const api = {
         launchToken?: string
         launchAgent?: TuiAgent
         viewMode?: 'terminal' | 'chat'
+        launchNotices?: PersistedLaunchNoticeState
         title?: string
         ptyId?: string
         activate?: boolean
@@ -3827,6 +3892,7 @@ const api = {
           launchToken?: string
           launchAgent?: TuiAgent
           viewMode?: 'terminal' | 'chat'
+          launchNotices?: PersistedLaunchNoticeState
           title?: string
           ptyId?: string
           activate?: boolean
@@ -4248,6 +4314,10 @@ const api = {
       ipcRenderer.invoke('aiVault:getFirstUserPrompt', args),
     deleteSession: (args: AiVaultDeleteSessionArgs): Promise<AiVaultDeleteSessionResult> =>
       ipcRenderer.invoke('aiVault:deleteSession', args),
+    resumeCommand: (entry: AgentLaunchVaultResumeEntry): Promise<unknown> =>
+      ipcRenderer.invoke('aiVault:resumeCommand', entry),
+    resumeDetails: (entry: AgentLaunchVaultResumeEntry): Promise<unknown> =>
+      ipcRenderer.invoke('aiVault:resumeDetails', entry),
     onWindowFocused: (callback: () => void): (() => void) => {
       const listener = (_event: Electron.IpcRendererEvent) => callback()
       ipcRenderer.on('aiVault:windowFocused', listener)
@@ -4660,6 +4730,8 @@ const api = {
       ipcRenderer.invoke('automations:runPrecheck', args),
     markDispatchResult: (result: AutomationDispatchResult): Promise<AutomationRun> =>
       ipcRenderer.invoke('automations:markDispatchResult', result),
+    forgetRun: (args: { runId: string }): Promise<AutomationRun> =>
+      ipcRenderer.invoke('automations:forgetRun', args),
     snapshotWorkspaceName: (args: { workspaceId: string; displayName: string }): Promise<number> =>
       ipcRenderer.invoke('automations:snapshotWorkspaceName', args),
     rendererReady: (): Promise<void> => ipcRenderer.invoke('automations:rendererReady'),
