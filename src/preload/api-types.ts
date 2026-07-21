@@ -17,6 +17,13 @@ import type {
   DashboardSpawnAgentArgs
 } from '../shared/dashboard-snapshot'
 import type {
+  DataRecoveryMigrationStatus,
+  DataRecoveryOperationResult,
+  RecoveryPointDto,
+  RecoveryPointId,
+  RestoreRecoveryPointMode
+} from '../shared/data-recovery'
+import type {
   TerminalPreviewConnectResult,
   TerminalPreviewDataPayload
 } from '../shared/terminal-preview'
@@ -2581,6 +2588,18 @@ export type PreloadApi = {
   }
   localhostWorktreeLabels: {
     register: (args: LocalhostWorktreeLabelRoute) => Promise<LocalhostWorktreeLabelResult>
+  }
+  /** Data recovery (runbook release requirement). Local preload IPC only —
+   *  desktop host; absent on paired web. Metadata only: no backup paths or
+   *  contents ever reach the renderer. */
+  dataRecovery?: {
+    migrationStatus: () => Promise<DataRecoveryMigrationStatus>
+    retryAgentCatalogMigration: () => Promise<DataRecoveryOperationResult>
+    listPoints: () => Promise<RecoveryPointDto[]>
+    restore: (args: {
+      id: RecoveryPointId
+      mode: RestoreRecoveryPointMode
+    }) => Promise<DataRecoveryOperationResult>
   }
   keybindings: {
     get: () => Promise<KeybindingFileSnapshot>
