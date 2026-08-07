@@ -7,6 +7,7 @@ import {
 } from './pane-terminal-foreground-render-settle'
 import { runGuardedWriteCompletionStep } from './xterm-write-callback-guard'
 import { recordRendererCrashBreadcrumb } from '@/lib/crash-breadcrumb-recorder'
+import { flattenRetainedSlice } from '@/lib/flatten-retained-slice'
 import {
   discardInFlightTerminalOutputAckCredits,
   registerTerminalOutputAckCredits
@@ -584,11 +585,6 @@ function coalescedQueuedDataNeedsCursorRestore(entry: QueueEntry): boolean {
   )
 }
 
-// Why: V8 backs `slice` with a SlicedString that points at the whole parent, so a small tail keeps a huge chunk alive. Concatenating forces a ConsString whose flattening allocates a fresh sequential string of just this length.
-function flattenRetainedSlice(value: string): string {
-  return value.length === 0 ? value : `${value} `.slice(0, -1)
-}
-
 function takeQueuedChunk(entry: QueueEntry, limit: number): QueuedWrite | null {
   let remaining = limit
   let data = ''
@@ -744,6 +740,9 @@ function enqueueChunk(
 ): void {
   entry.chunks.push({
     data,
+    // Why data.length is the truth here: callers must hand the queue a string that owns its own
+    // storage. A caller passing a slice of a much larger buffer would understate what the queue
+    // pins, so producers flatten overlap-trimmed payloads before they reach the scheduler.
     retainedChars: data.length,
     foreground: options?.foreground === true,
     forceForegroundRefresh: options?.forceForegroundRefresh === true,

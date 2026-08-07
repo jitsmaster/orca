@@ -333,6 +333,7 @@ import {
 } from './renderer-owned-agent-status-registry'
 import type { DirectSshPaneRetryAttempt } from '@/store/slices/direct-ssh-terminal-recovery'
 import { directSshAuthoritiesEqual } from '@/store/slices/direct-ssh-terminal-authority-ledger'
+import { flattenRetainedSlice } from '@/lib/flatten-retained-slice'
 
 const pendingSpawnByPaneKey = new Map<string, Promise<string | null>>()
 const SSH_SESSION_EXPIRED_ERROR = 'SSH_SESSION_EXPIRED'
@@ -6870,7 +6871,9 @@ export function connectPanePty(
       if (rawLength !== chunk.data.length) {
         return null
       }
-      return chunk.data.slice(offset)
+      // Why flatten: this tail outlives the chunk it was cut from once queued, and a raw slice
+      // would pin the whole original chunk in the output queue (STA-3567).
+      return flattenRetainedSlice(chunk.data.slice(offset))
     }
 
     type RestoredSnapshotReconciliation =
@@ -6920,7 +6923,9 @@ export function connectPanePty(
         // Why: renderer-only OSC stripping makes raw seq offsets unmappable onto cleaned text; refetch instead of risking duplicate output.
         return { action: 'force-fresh-restore' }
       }
-      const sliced = data.slice(restoredSnapshotBaselineSeq - startSeq)
+      // Why flatten: same as above - the trimmed tail is handed to the output queue, and a raw
+      // slice would keep the entire pre-trim payload alive behind it (STA-3567).
+      const sliced = flattenRetainedSlice(data.slice(restoredSnapshotBaselineSeq - startSeq))
       return {
         action: 'write',
         data: sliced,
