@@ -1721,4 +1721,79 @@ describe('pane terminal output scheduler', () => {
     vi.advanceTimersByTime(100)
     expect(throwing.write).toHaveBeenCalledTimes(1)
   })
+
+  describe('queue memory retention (STA-3567)', () => {
+    // Why 2 MB: comfortably above BACKGROUND_CHUNK_CHARS (16 K), so every drain leaves a residual slice.
+    const CHUNK_CHARS = 2 * 1024 * 1024
+    const TERMINALS = 8
+
+    function collect(): number {
+      const gc = (globalThis as { gc?: () => void }).gc
+      if (!gc) {
+        throw new Error('global.gc unavailable - config/vitest.config.ts must pass --expose-gc')
+      }
+      gc()
+      gc()
+      return process.memoryUsage().heapUsed
+    }
+
+    it('drops the parent chunk once only a small tail is still queued', async () => {
+      vi.useFakeTimers()
+      const { writeTerminalOutput } = await loadScheduler()
+
+      // Why a hand-rolled write: vi.fn() retains every argument in mock.calls, which would
+      // dominate the measurement with the very bytes the queue is supposed to have released.
+      let writtenChars = 0
+      const makeSink = (): { write: (data: string, callback?: () => void) => void } => ({
+        write: (data: string, callback?: () => void) => {
+          writtenChars += data.length
+          callback?.()
+        }
+      })
+
+      // Distinct leading chars keep V8 from sharing any backing store between terminals.
+      const terminals = Array.from({ length: TERMINALS }, (_unused, index) => {
+        const terminal = makeSink()
+        writeTerminalOutput(
+          terminal,
+          String.fromCharCode(65 + index) + 'q'.repeat(CHUNK_CHARS - 1),
+          { foreground: false, latencySensitive: false }
+        )
+        return terminal
+      })
+
+      const debug = (
+        globalThis as {
+          __terminalOutputSchedulerDebug?: { snapshot: () => { queuedChars: number } }
+        }
+      ).__terminalOutputSchedulerDebug
+      if (!debug) {
+        throw new Error('scheduler debug API unavailable')
+      }
+
+      const baseline = collect()
+
+      // Why stop early: the leak is what a PARTIALLY drained queue pins. Draining to empty
+      // frees the chunks either way, so a full drain cannot observe the defect.
+      const TAIL_CHARS = 64 * 1024
+      let ticks = 0
+      while (debug.snapshot().queuedChars > TAIL_CHARS && ticks < 20000) {
+        vi.advanceTimersByTime(4)
+        ticks += 1
+      }
+
+      const queuedChars = debug.snapshot().queuedChars
+      const retainedBytes = collect() - baseline
+
+      // Sanity: nearly everything drained, but a real tail is still queued - otherwise
+      // there is no residual slice to hold a parent chunk and the measurement is meaningless.
+      expect(writtenChars).toBeGreaterThan(TERMINALS * CHUNK_CHARS * 0.9)
+      expect(queuedChars).toBeGreaterThan(0)
+      expect(queuedChars).toBeLessThanOrEqual(TAIL_CHARS)
+
+      // The defect: those few queued KB pinned 8 x 2 MB of parent chunks (~16 MB).
+      expect(retainedBytes).toBeLessThan(4 * 1024 * 1024)
+      expect(terminals).toHaveLength(TERMINALS)
+    })
+  })
 })
