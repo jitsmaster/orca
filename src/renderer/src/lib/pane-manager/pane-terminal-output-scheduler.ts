@@ -738,12 +738,14 @@ function enqueueChunk(
     ackCredit?: () => void
   }
 ): void {
+  // Why copy at the boundary: producers hand us slices and concatenations that pin far more than
+  // they measure - restore-overlap trims and OSC status stripping both do - and the queue holds
+  // this string long after the parent is otherwise dead. Owning our copy is what makes
+  // retainedChars true, and it costs ~0.1ms per 512KB against a ~30MB/s sustained drain.
+  const owned = flattenRetainedSlice(data)
   entry.chunks.push({
-    data,
-    // Why data.length is the truth here: callers must hand the queue a string that owns its own
-    // storage. A caller passing a slice of a much larger buffer would understate what the queue
-    // pins, so producers flatten overlap-trimmed payloads before they reach the scheduler.
-    retainedChars: data.length,
+    data: owned,
+    retainedChars: owned.length,
     foreground: options?.foreground === true,
     forceForegroundRefresh: options?.forceForegroundRefresh === true,
     followupForegroundRefresh: options?.followupForegroundRefresh === true,

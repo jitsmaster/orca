@@ -1737,6 +1737,34 @@ describe('pane terminal output scheduler', () => {
       return process.memoryUsage().heapUsed
     }
 
+    it('does not pin the parent when a producer enqueues a slice', async () => {
+      vi.useFakeTimers()
+      const { writeTerminalOutput } = await loadScheduler()
+
+      // Why a slice: agent-status-osc.ts and the restore-overlap trims hand the scheduler
+      // strings cut from a much larger buffer. The queue must own its copy rather than
+      // trusting every producer to flatten first (STA-3567 review round 2).
+      const KEEP_CHARS = 64 * 1024
+      const sinks = Array.from({ length: TERMINALS }, () => ({
+        write: (_data: string, callback?: () => void) => callback?.()
+      }))
+
+      const baseline = collect()
+
+      for (const [index, sink] of sinks.entries()) {
+        const parent = String.fromCharCode(65 + index) + 'q'.repeat(CHUNK_CHARS - 1)
+        writeTerminalOutput(sink, parent.slice(parent.length - KEEP_CHARS), {
+          foreground: false,
+          latencySensitive: false
+        })
+      }
+
+      const retainedBytes = collect() - baseline
+
+      // 8 x 64 KB of real payload must not keep 8 x 2 MB of parents alive.
+      expect(retainedBytes).toBeLessThan(4 * 1024 * 1024)
+    })
+
     it('drops the parent chunk once only a small tail is still queued', async () => {
       vi.useFakeTimers()
       const { writeTerminalOutput } = await loadScheduler()
