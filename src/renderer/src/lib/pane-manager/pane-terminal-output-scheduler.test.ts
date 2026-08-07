@@ -1737,6 +1737,66 @@ describe('pane terminal output scheduler', () => {
       return process.memoryUsage().heapUsed
     }
 
+    it('releases chunks it has already drained past', async () => {
+      vi.useFakeTimers()
+      const { writeTerminalOutput } = await loadScheduler()
+
+      // Why many medium chunks: compactConsumedChunks only splices once chunkIndex reaches 64,
+      // so below that the drained slots stay in the array and must be cleared individually.
+      const CHUNKS_PER_TERMINAL = 40
+      const CHUNK = 48 * 1024
+      const SINKS = 4
+
+      let writtenChars = 0
+      const terminals = Array.from({ length: SINKS }, () => ({
+        write: (data: string, callback?: () => void) => {
+          writtenChars += data.length
+          callback?.()
+        }
+      }))
+
+      const baseline = collect()
+
+      for (const [index, terminal] of terminals.entries()) {
+        for (let chunk = 0; chunk < CHUNKS_PER_TERMINAL; chunk += 1) {
+          writeTerminalOutput(
+            terminal,
+            String.fromCharCode(65 + index) +
+              String.fromCharCode(48 + (chunk % 10)) +
+              'q'.repeat(CHUNK - 2),
+            { foreground: false, latencySensitive: false }
+          )
+        }
+      }
+
+      const debug = (
+        globalThis as {
+          __terminalOutputSchedulerDebug?: { snapshot: () => { queuedChars: number } }
+        }
+      ).__terminalOutputSchedulerDebug
+      if (!debug) {
+        throw new Error('scheduler debug API unavailable')
+      }
+
+      const TAIL_CHARS = 64 * 1024
+      let ticks = 0
+      while (debug.snapshot().queuedChars > TAIL_CHARS && ticks < 40000) {
+        vi.advanceTimersByTime(4)
+        ticks += 1
+      }
+
+      const queuedChars = debug.snapshot().queuedChars
+      const retainedBytes = collect() - baseline
+
+      // Sanity: the queues really drained down, and none hit the backlog cap.
+      expect(writtenChars).toBeGreaterThan(SINKS * CHUNKS_PER_TERMINAL * CHUNK * 0.9)
+      expect(queuedChars).toBeGreaterThan(0)
+      expect(queuedChars).toBeLessThanOrEqual(TAIL_CHARS)
+
+      // The defect: ~39 drained-past slots per terminal kept their strings alive uncharged.
+      expect(retainedBytes).toBeLessThan(2 * 1024 * 1024)
+    })
+
     it('does not pin the parent when a producer enqueues a slice', async () => {
       vi.useFakeTimers()
       const { writeTerminalOutput } = await loadScheduler()
@@ -1778,17 +1838,21 @@ describe('pane terminal output scheduler', () => {
           callback?.()
         }
       })
+      const terminals = Array.from({ length: TERMINALS }, makeSink)
 
-      // Distinct leading chars keep V8 from sharing any backing store between terminals.
-      const terminals = Array.from({ length: TERMINALS }, (_unused, index) => {
-        const terminal = makeSink()
+      // Why baseline BEFORE enqueueing: the queue owns a copy of every chunk, so a baseline
+      // taken after enqueue already contains the parents this test must prove get released,
+      // and the assertion would hold even with residual flattening disabled.
+      const baseline = collect()
+
+      for (const [index, terminal] of terminals.entries()) {
+        // Built and dropped inline so only the queue's own copy stays reachable.
         writeTerminalOutput(
           terminal,
           String.fromCharCode(65 + index) + 'q'.repeat(CHUNK_CHARS - 1),
           { foreground: false, latencySensitive: false }
         )
-        return terminal
-      })
+      }
 
       const debug = (
         globalThis as {
@@ -1798,8 +1862,6 @@ describe('pane terminal output scheduler', () => {
       if (!debug) {
         throw new Error('scheduler debug API unavailable')
       }
-
-      const baseline = collect()
 
       // Why stop early: the leak is what a PARTIALLY drained queue pins. Draining to empty
       // frees the chunks either way, so a full drain cannot observe the defect.
@@ -1819,9 +1881,8 @@ describe('pane terminal output scheduler', () => {
       expect(queuedChars).toBeGreaterThan(0)
       expect(queuedChars).toBeLessThanOrEqual(TAIL_CHARS)
 
-      // The defect: those few queued KB pinned 8 x 2 MB of parent chunks (~16 MB).
+      // The defect: those few queued KB pinned 8 x 2 MB of chunks (~16 MB).
       expect(retainedBytes).toBeLessThan(4 * 1024 * 1024)
-      expect(terminals).toHaveLength(TERMINALS)
     })
   })
 })
