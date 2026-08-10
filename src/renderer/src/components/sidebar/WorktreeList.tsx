@@ -102,6 +102,7 @@ import {
   getRenderRowKey,
   getStickyHeaderIndexes,
   getVirtualRowTransform,
+  HOST_STICKY_GROUP_TOP_PX,
   pruneStaleVirtualRowElementCache,
   shouldUseHeaderTopSpacing,
   type RenderRow
@@ -4108,9 +4109,8 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
 
             if (row.type === 'header') {
               const isActiveStickyHeader = activeStickyHeaderIndexRef.current === vItem.index
-              // Why: when a host card is pinned, the group tier pins flush beneath it, not at the viewport top.
-              const stickyTopClass =
-                activeStickyHostIndexRef.current !== null ? 'top-[35px]' : '-top-px'
+              // Why: when a host card is pinned, the group tier pins flush beneath it (HOST_STICKY_GROUP_TOP_PX), not at the viewport top.
+              const stickyUnderHost = activeStickyHostIndexRef.current !== null
               const hasHeaderTopSpacing = shouldUseHeaderTopSpacing({
                 rows: renderRows,
                 index: vItem.index,
@@ -4224,12 +4224,17 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                     // Why: drop the inter-group spacer once the header pins so it sits flush at top (see getActiveStickyHeaderIndexForScroll).
                     hasHeaderTopSpacing && !isActiveStickyHeader && 'pt-1',
                     isActiveStickyHeader
-                      ? cn('sticky z-20 bg-worktree-sidebar', stickyTopClass)
+                      ? cn(
+                          'sticky z-20 bg-worktree-sidebar',
+                          stickyUnderHost ? undefined : '-top-px'
+                        )
                       : 'absolute top-0'
                   )}
                   style={
                     isActiveStickyHeader
-                      ? undefined
+                      ? stickyUnderHost
+                        ? { top: HOST_STICKY_GROUP_TOP_PX }
+                        : undefined
                       : { transform: getVirtualRowTransform(vItem.start) }
                   }
                 >

@@ -142,7 +142,9 @@ function localizePendingRowsForHost(
   const localized: Extract<Row, { type: 'header' }>[] = []
   for (const row of rows) {
     if (!row.hostWorktreeCounts) {
-      localized.push(row)
+      // Why: project-group (and other unscoped) headers can land under every host
+      // section; stamp hostId so virtualizer keys stay unique across hosts (#12532).
+      localized.push({ ...row, hostId })
       continue
     }
     const count = row.hostWorktreeCounts.get(hostId)

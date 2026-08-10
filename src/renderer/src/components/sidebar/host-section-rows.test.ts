@@ -364,6 +364,16 @@ describe('addHostSectionRows', () => {
         expect.objectContaining({ count: 1, hostId: 'ssh:ssh-1' })
       ])
     )
+    // Why: unscoped "all" headers are cloned per host; hostId keeps virtualizer keys unique (#12532).
+    expect(
+      sectioned
+        .filter(
+          (row): row is Extract<HostSectionRow, { type: 'header' }> =>
+            row.type === 'header' && row.key === 'all'
+        )
+        .map((row) => row.hostId)
+        .sort()
+    ).toEqual(['local', 'ssh:ssh-1'])
   })
 
   it('keeps collapsed pinned rows attributable to their owning hosts', () => {

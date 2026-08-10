@@ -5,6 +5,9 @@ import { getLineageGroupKey, PINNED_GROUP_KEY } from './worktree-list-groups'
 
 export const GROUP_HEADER_ROW_HEIGHT = 28
 export const HOST_HEADER_ROW_HEIGHT = 32
+// Why: HostSectionHeader always wraps the h-8 card in pt-1; sticky drops only the
+// inter-group virtual-row spacer, not this inner padding (#12532).
+export const HOST_HEADER_INNER_TOP_PADDING = 4
 const SECONDARY_GROUP_HEADER_TOP_MARGIN = 4
 const IMPORTED_WORKTREES_LINE_ROW_HEIGHT = 36
 const PENDING_CREATION_ROW_HEIGHT = 56
@@ -93,6 +96,7 @@ export function estimateRenderRowSize(
   if (row?.type === 'host-header') {
     return (
       HOST_HEADER_ROW_HEIGHT +
+      HOST_HEADER_INNER_TOP_PADDING +
       (shouldUseHeaderTopSpacing({
         rows,
         index,
@@ -173,10 +177,12 @@ export function getStickyHeaderIndexes(rows: readonly RenderRow[]): number[] {
   return indexes
 }
 
-// Why: the pinned host card is h-8 (32px) inside a pt-1 (4px) wrapper; the
-// group tier pins one pixel up to sit flush beneath it. Keep in sync with
-// HostSectionHeader's layout.
-export const HOST_STICKY_PINNED_HEIGHT = 36
+// Why: sticky host keeps HostSectionHeader's inner pt-1 + h-8 card (36px) and
+// only drops the inter-group virtual-row spacer. Group tier pins flush under that.
+export const HOST_STICKY_PINNED_HEIGHT = HOST_HEADER_ROW_HEIGHT + HOST_HEADER_INNER_TOP_PADDING
+
+/** One pixel up under the pinned host so the group sticky sits flush. */
+export const HOST_STICKY_GROUP_TOP_PX = HOST_STICKY_PINNED_HEIGHT - 1
 
 export type ActiveStickyIndexes = {
   /** Pinned host card (tier 1), or null outside host sections. */
