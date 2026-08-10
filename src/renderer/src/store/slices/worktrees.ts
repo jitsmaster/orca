@@ -143,6 +143,10 @@ const FOLDER_WORKSPACE_ACTIVITY_PERSIST_INTERVAL_MS = 1_000
 export const WORKTREE_REFRESH_CONCURRENCY = 8
 const pendingActivationTerminalPrepCancels = new Map<string, () => void>()
 const detachedHeadAutoDerivedDisplayNames = new Map<string, string>()
+const preservedBranchRuntimeTargetByWorktreeId = new Map<
+  string,
+  ReturnType<typeof getActiveRuntimeTarget>
+>()
 const folderWorkspaceWorktreeCache = new WeakMap<FolderWorkspace, Worktree>()
 const hostedReviewPushTargetLookupsInFlight = new Set<string>()
 const runtimeDetectedWorktreeRefreshesInFlight = new Map<
@@ -4682,6 +4686,11 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
       // Why: Source Control may be unmounted during deletion, so it can't be the only stale-draft cleanup path.
       clearSessionCommitDraftForWorktree(worktreeId)
       const preservedBranch = removalResult?.preservedBranch
+      if (preservedBranch) {
+        preservedBranchRuntimeTargetByWorktreeId.set(worktreeId, target)
+      } else {
+        preservedBranchRuntimeTargetByWorktreeId.delete(worktreeId)
+      }
       if (preservedBranch && options?.suppressPreservedBranchToast !== true) {
         showPreservedBranchToast(removalResult, worktreeBeforeRemoval, (branch, expectedHead) => {
           void get().forceDeletePreservedBranch(worktreeId, branch, expectedHead)
@@ -4765,9 +4774,12 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
     })
   },
 
-  forceDeletePreservedBranch: async (worktreeId, branchName, expectedHead) => {
+  forceDeletePreservedBranch: async (worktreeId, branchName, expectedHead, options) => {
     try {
-      const target = getActiveRuntimeTarget(settingsForWorktreeOwner(get(), worktreeId))
+      // Why: the removed row no longer records its nested HUB owner, so retain the deletion-time route.
+      const target =
+        preservedBranchRuntimeTargetByWorktreeId.get(worktreeId) ??
+        getActiveRuntimeTarget(settingsForWorktreeOwner(get(), worktreeId))
       const result = await (target.kind === 'local'
         ? window.api.worktrees.forceDeletePreservedBranch({
             worktreeId,
@@ -4780,17 +4792,27 @@ export const createWorktreeSlice: StateCreator<AppState, [], [], WorktreeSlice> 
             { worktree: toRuntimeWorktreeSelector(worktreeId), branchName, expectedHead },
             { timeoutMs: 15_000 }
           ))
-      toast.success(translate('auto.store.slices.worktrees.19db0085fb', 'Local branch deleted'), {
-        description: translate('auto.store.slices.worktrees.5a58e03a26', 'Deleted "{{value0}}".', {
-          value0: branchName
+      if (options?.suppressToast !== true) {
+        toast.success(translate('auto.store.slices.worktrees.19db0085fb', 'Local branch deleted'), {
+          description: translate(
+            'auto.store.slices.worktrees.5a58e03a26',
+            'Deleted "{{value0}}".',
+            { value0: branchName }
+          )
         })
-      })
+      }
+      preservedBranchRuntimeTargetByWorktreeId.delete(worktreeId)
       return { ok: true as const, ...result }
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err)
-      toast.error(translate('auto.store.slices.worktrees.0216895fb5', 'Failed to delete branch'), {
-        description: error
-      })
+      if (options?.suppressToast !== true) {
+        toast.error(
+          translate('auto.store.slices.worktrees.0216895fb5', 'Failed to delete branch'),
+          {
+            description: error
+          }
+        )
+      }
       return { ok: false as const, error }
     }
   },

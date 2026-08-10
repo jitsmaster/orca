@@ -361,6 +361,9 @@ const AddProjectFromFolderDialog = lazy(
 )
 const ProjectAddedDialog = lazy(() => import('./components/sidebar/ProjectAddedDialog'))
 const DeleteWorktreeDialog = lazy(() => import('./components/sidebar/DeleteWorktreeDialog'))
+const PreservedBranchBatchReviewModal = lazy(
+  () => import('./components/sidebar/PreservedBranchBatchReviewModal')
+)
 const DictationController = lazy(() =>
   import('./components/dictation/DictationController').then((module) => ({
     default: module.DictationController
@@ -2701,6 +2704,16 @@ function App(): React.JSX.Element {
                   compact
                 >
                   <DeleteWorktreeDialog />
+                </RecoverableRenderErrorBoundary>
+              ) : null}
+              {activeModal === 'preserved-branch-review' ? (
+                <RecoverableRenderErrorBoundary
+                  boundaryId="modal.preserved-branch-review"
+                  surface="modal"
+                  resetKey
+                  compact
+                >
+                  <PreservedBranchBatchReviewModal />
                 </RecoverableRenderErrorBoundary>
               ) : null}
             </Suspense>

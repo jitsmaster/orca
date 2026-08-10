@@ -242,7 +242,8 @@ export type WorktreeSlice = {
   forceDeletePreservedBranch: (
     worktreeId: string,
     branchName: string,
-    expectedHead: string
+    expectedHead: string,
+    options?: { suppressToast?: boolean }
   ) => Promise<({ ok: true } & ForceDeleteWorktreeBranchResult) | { ok: false; error: string }>
   clearWorktreeDeleteState: (worktreeId: string) => void
   /** Never rejects — most callers fire-and-forget. Callers that own a surface

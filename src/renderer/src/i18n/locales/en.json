@@ -5334,6 +5334,25 @@
           "connectName": "Connect to SSH host {{value0}}",
           "authFailedTooltip": "{{value0}} · authentication failed",
           "failedTooltip": "{{value0}} · connection failed"
+        },
+        "preservedBranchBatch": {
+          "diskCopy": "Git kept {{value0}} local {{value1}} because they may contain unmerged commits. Kept branches do not retain workspace folders; their commits remain in the repository. Orca may continue freeing workspace disk space in the background.",
+          "title": "{{value0}} {{value1}} removed, {{value2}} {{value3}} kept",
+          "deleting": "Deleting local branches: {{value0}}",
+          "deleted": "Local branches deleted: {{value0}}",
+          "failed": "{{value0}} deleted, {{value1}} not deleted",
+          "retry": "Retry {{value0}} {{value1}}",
+          "review": "Review {{value0}} {{value1}}"
+        },
+        "preservedBranchBatchReview": {
+          "title": "Review kept branches",
+          "description": "Select the local branches you want to force delete. Unselected branches stay in their repositories.",
+          "selectAll": "Select all",
+          "selectedCount": "{{value0}} of {{value1}} selected",
+          "mayBeUnmerged": "May be unmerged",
+          "headUnavailable": "Head unavailable",
+          "cancel": "Cancel",
+          "forceDeleteSelected": "Force Delete {{value0}} {{value1}}"
         }
       },
       "shared": {
