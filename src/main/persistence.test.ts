@@ -3524,6 +3524,59 @@ describe('Store', () => {
     expect(store.getRepo('sibling')?.projectGroupId).toBe(sibling.id)
   })
 
+  it('deleteProjectGroup fences preserved folder sessions without clearing shared-key selection', async () => {
+    const store = await createStore()
+    const group = store.createProjectGroup({
+      name: 'Remote platform',
+      parentPath: '/srv/platform',
+      connectionId: 'ssh-1',
+      createdFrom: 'folder-scan'
+    })
+    const workspace = store.createFolderWorkspace({
+      projectGroupId: group.id,
+      name: 'Shared folder'
+    })
+    const workspaceKey = folderWorkspaceKey(workspace.id)
+    const sshHostId = toSshExecutionHostId('ssh-1')
+    const siblingHostId = toRuntimeExecutionHostId('runtime-sibling')
+    const session = (tabId: string, revision: number): WorkspaceSessionState => ({
+      ...getDefaultWorkspaceSession(),
+      tabsByWorktree: {
+        [workspaceKey]: [makeTerminalTab({ id: tabId, worktreeId: workspaceKey })]
+      },
+      terminalTopologyRevisionByRepoId: { [workspaceKey]: revision }
+    })
+    store.setWorkspaceSession(session('spill-tab', 1))
+    store.setWorkspaceSession(session('ssh-tab', 3), sshHostId)
+    store.setWorkspaceSession(session('sibling-tab', 7), siblingHostId)
+    store.setMobileClientTabSelections({
+      device: {
+        [workspaceKey]: {
+          activeTabId: 'sibling-tab',
+          activeGroupId: null,
+          activeTabIdByGroupId: {}
+        }
+      }
+    })
+
+    expect(
+      store.deleteProjectGroup(group.id, {
+        preserveRendererWorkspaceIds: [workspace.id]
+      })
+    ).toBe(true)
+
+    expect(store.getWorkspaceSession().tabsByWorktree[workspaceKey]).toBeUndefined()
+    expect(store.getWorkspaceSession().terminalTopologyRevisionByRepoId?.[workspaceKey]).toBe(2)
+    expect(store.getWorkspaceSession(sshHostId).tabsByWorktree[workspaceKey]).toBeUndefined()
+    expect(
+      store.getWorkspaceSession(sshHostId).terminalTopologyRevisionByRepoId?.[workspaceKey]
+    ).toBe(4)
+    expect(store.getWorkspaceSession(siblingHostId).tabsByWorktree[workspaceKey]).toHaveLength(1)
+    expect(store.getMobileClientTabSelections().device?.[workspaceKey]?.activeTabId).toBe(
+      'sibling-tab'
+    )
+  })
+
   it('adapts flat folder-scan groups into sparse nested folder scopes on load', async () => {
     writeDataFile({
       schemaVersion: 1,
@@ -5378,6 +5431,91 @@ describe('Store', () => {
     expect(session.terminalLayoutsByTabId['folder-tab']).toBeUndefined()
     expect(session.terminalLayoutsByTabId['repo-tab']).toBeDefined()
     expect(session.browserPagesByWorkspace?.['browser-workspace']).toBeUndefined()
+  })
+
+  it('removes direct-SSH session partitions while preserving shared-key renderer state', async () => {
+    const store = await createStore()
+    const group = store.createProjectGroup({
+      name: 'Remote platform',
+      parentPath: '/srv/platform',
+      connectionId: 'ssh-1',
+      createdFrom: 'folder-scan'
+    })
+    const workspace = store.createFolderWorkspace({
+      projectGroupId: group.id,
+      name: 'Remote fix'
+    })
+    const key = folderWorkspaceKey(workspace.id)
+    const localTab = makeTerminalTab({ id: 'local-spill-tab', worktreeId: key })
+    const sshTab = makeTerminalTab({ id: 'ssh-owner-tab', worktreeId: key })
+    const siblingTab = makeTerminalTab({ id: 'runtime-sibling-tab', worktreeId: key })
+    const sessionWithTab = (tab: TerminalTab, revision: number): WorkspaceSessionState => ({
+      ...getDefaultWorkspaceSession(),
+      tabsByWorktree: { [key]: [tab] },
+      terminalLayoutsByTabId: {
+        [tab.id]: { root: null, activeLeafId: null, expandedLeafId: null }
+      },
+      terminalTopologyRevisionByRepoId: { [key]: revision }
+    })
+    const sshHostId = toSshExecutionHostId('ssh-1')
+    const siblingHostId = toRuntimeExecutionHostId('sibling')
+    store.setWorkspaceSession(sessionWithTab(localTab, 2))
+    store.setWorkspaceSession(sessionWithTab(sshTab, 4), sshHostId)
+    store.setWorkspaceSession(sessionWithTab(siblingTab, 6), siblingHostId)
+    store.setMobileClientTabSelections({
+      'device-a': {
+        [key]: {
+          activeTabId: siblingTab.id,
+          activeGroupId: null,
+          activeTabIdByGroupId: {}
+        }
+      }
+    })
+
+    expect(store.removeFolderWorkspace(workspace.id, { preserveRendererWorkspaceKey: true })).toBe(
+      true
+    )
+
+    expect(store.getWorkspaceSession().tabsByWorktree[key]).toBeUndefined()
+    expect(store.getWorkspaceSession().terminalTopologyRevisionByRepoId?.[key]).toBe(3)
+    expect(store.getWorkspaceSession(sshHostId).tabsByWorktree[key]).toBeUndefined()
+    expect(store.getWorkspaceSession(sshHostId).terminalTopologyRevisionByRepoId?.[key]).toBe(5)
+    expect(store.getWorkspaceSession(siblingHostId).tabsByWorktree[key]).toEqual([siblingTab])
+    expect(store.getWorkspaceSession(siblingHostId).terminalTopologyRevisionByRepoId?.[key]).toBe(6)
+    expect(store.getMobileClientTabSelections()['device-a']?.[key]?.activeTabId).toBe(siblingTab.id)
+  })
+
+  it('preserves shared-key mobile state when another renderer owner survives deletion', async () => {
+    const store = await createStore()
+    const group = store.createProjectGroup({
+      name: 'Local platform',
+      parentPath: '/workspace/platform',
+      createdFrom: 'folder-scan'
+    })
+    const workspace = store.createFolderWorkspace({
+      projectGroupId: group.id,
+      name: 'Shared identity'
+    })
+    const key = folderWorkspaceKey(workspace.id)
+    store.setMobileClientTabSelections({
+      'device-a': {
+        [key]: {
+          activeTabId: 'remote-tab',
+          activeGroupId: null,
+          activeTabIdByGroupId: {}
+        }
+      }
+    })
+
+    expect(store.removeFolderWorkspace(workspace.id, { preserveRendererWorkspaceKey: true })).toBe(
+      true
+    )
+    store.flush()
+
+    const reloaded = await createStore()
+    expect(reloaded.getMobileClientTabSelections()['device-a']?.[key]?.activeTabId).toBe(
+      'remote-tab'
+    )
   })
 
   // ── 9. Settings: get/update ────────────────────────────────────────

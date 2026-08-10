@@ -1,6 +1,8 @@
+// @vitest-environment happy-dom
 import { renderToStaticMarkup } from 'react-dom/server'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   GitConflictOperation,
   GlobalSettings,
@@ -15,6 +17,8 @@ const fetchHostedReviewForBranch = vi.fn()
 const fetchIssue = vi.fn()
 const openModal = vi.fn()
 const updateWorktreeMeta = vi.fn()
+const deleteFolderWorkspace = vi.fn()
+const setActiveWorktree = vi.fn()
 
 let worktreeCardProperties: WorktreeCardProperty[] = ['status']
 let tabsByWorktree: Record<string, { id: string }[]> = {}
@@ -24,30 +28,40 @@ let settings: Partial<GlobalSettings> | null = null
 let projectGroups: unknown[] = []
 let workspaceDeleteModifierPressed = false
 let gitConflictOperationByWorktree: Record<string, GitConflictOperation> = {}
+let activeWorktreeId: string | null = null
+let activeWorkspaceExecutionHostId: string | null = null
 let WorktreeCard: typeof WorktreeCardComponent
 
-vi.mock('@/store', () => ({
-  useAppStore: (selector: (state: unknown) => unknown) =>
-    selector({
-      deleteStateByWorktreeId: {},
-      fetchHostedReviewForBranch,
-      fetchIssue,
-      gitConflictOperationByWorktree,
-      hostedReviewCache: {},
-      issueCache: {},
-      openModal,
-      projectGroups,
-      remoteBranchConflictByWorktreeId: {},
-      settings,
-      sshConnectionStates: new Map(),
-      sshTargetLabels: new Map(),
-      browserTabsByWorktree,
-      ptyIdsByTabId,
-      tabsByWorktree,
-      updateWorktreeMeta,
-      worktreeCardProperties
+vi.mock('@/store', () => {
+  const getState = () => ({
+    activeWorktreeId,
+    activeWorkspaceExecutionHostId,
+    deleteStateByWorktreeId: {},
+    deleteFolderWorkspace,
+    fetchHostedReviewForBranch,
+    fetchIssue,
+    gitConflictOperationByWorktree,
+    hostedReviewCache: {},
+    issueCache: {},
+    openModal,
+    projectGroups,
+    remoteBranchConflictByWorktreeId: {},
+    settings,
+    sshConnectionStates: new Map(),
+    sshTargetLabels: new Map(),
+    browserTabsByWorktree,
+    ptyIdsByTabId,
+    setActiveWorktree,
+    tabsByWorktree,
+    updateWorktreeMeta,
+    worktreeCardProperties
+  })
+  return {
+    useAppStore: Object.assign((selector: (state: unknown) => unknown) => selector(getState()), {
+      getState
     })
-}))
+  }
+})
 
 vi.mock('@/lib/worktree-activation', () => ({
   activateAndRevealWorktree: vi.fn()
@@ -144,7 +158,11 @@ describe('WorktreeCard quick actions', () => {
     projectGroups = []
     workspaceDeleteModifierPressed = false
     gitConflictOperationByWorktree = {}
+    activeWorktreeId = null
+    activeWorkspaceExecutionHostId = null
   })
+
+  afterEach(cleanup)
 
   it('marks the unread toggle as a workspace-board-preserving action', () => {
     const markup = renderToStaticMarkup(
@@ -453,6 +471,33 @@ describe('WorktreeCard quick actions', () => {
     )
 
     expect(markup).toContain('aria-label="Delete workspace"')
+  })
+
+  it('routes folder deletion to the clicked host without clearing an active sibling', async () => {
+    workspaceDeleteModifierPressed = true
+    deleteFolderWorkspace.mockResolvedValue(true)
+    activeWorktreeId = 'folder:folder-1'
+    activeWorkspaceExecutionHostId = 'runtime:env-a'
+
+    render(
+      <WorktreeCard
+        worktree={makeWorktree({
+          id: 'folder:folder-1',
+          hostId: 'runtime:env-b',
+          path: '/workspace/folder-1'
+        })}
+        repo={undefined}
+        isActive={false}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete workspace' }))
+    await Promise.resolve()
+
+    expect(deleteFolderWorkspace).toHaveBeenCalledWith('folder-1', {
+      hostId: 'runtime:env-b'
+    })
+    expect(setActiveWorktree).not.toHaveBeenCalled()
   })
 
   it('shows delete for a current workspace while Option/Alt is held', () => {

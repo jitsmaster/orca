@@ -1347,7 +1347,7 @@ export type PreloadApi = {
       groupId: string
       updates: Partial<Pick<ProjectGroup, 'name' | 'isCollapsed' | 'tabOrder' | 'color'>>
     }) => Promise<ProjectGroup | null>
-    delete: (args: { groupId: string }) => Promise<boolean>
+    delete: (args: { groupId: string; preserveRendererWorkspaceIds?: string[] }) => Promise<boolean>
     moveProject: (args: {
       projectId: string
       groupId: string | null
@@ -1406,7 +1406,10 @@ export type PreloadApi = {
         >
       >
     }) => Promise<FolderWorkspace | null>
-    delete: (args: { folderWorkspaceId: string }) => Promise<boolean>
+    delete: (args: {
+      folderWorkspaceId: string
+      preserveRendererWorkspaceKey?: boolean
+    }) => Promise<boolean>
   }
   sparsePresets: {
     list: (args: { repoId: string }) => Promise<SparsePreset[]>

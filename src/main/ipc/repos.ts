@@ -809,7 +809,8 @@ const ProjectGroupUpdateArgs = z.object({
 })
 
 const ProjectGroupSelectorArgs = z.object({
-  groupId: z.string().min(1)
+  groupId: z.string().min(1),
+  preserveRendererWorkspaceIds: z.array(z.string().min(1)).optional()
 })
 
 const ProjectGroupMoveProjectArgs = z.object({
@@ -948,7 +949,8 @@ const FolderWorkspaceUpdateArgs = z.object({
 })
 
 const FolderWorkspaceSelectorArgs = z.object({
-  folderWorkspaceId: z.string().min(1)
+  folderWorkspaceId: z.string().min(1),
+  preserveRendererWorkspaceKey: z.boolean().optional()
 })
 
 const FolderWorkspacePathStatusArgs = z.discriminatedUnion('scope', [
@@ -1260,7 +1262,11 @@ async function runNestedRepoScanForIpc(
   }
 }
 
-export function registerRepoHandlers(mainWindow: BrowserWindow, store: Store): void {
+export function registerRepoHandlers(
+  mainWindow: BrowserWindow,
+  store: Store,
+  runtime?: OrcaRuntimeService
+): void {
   // Remove previously registered handlers so we can re-register on macOS app re-activation (new window).
   ipcMain.removeHandler('repos:list')
   ipcMain.removeHandler('repos:listForExecutionHost')
@@ -1553,13 +1559,24 @@ export function registerRepoHandlers(mainWindow: BrowserWindow, store: Store): v
     }
   )
 
-  ipcMain.handle('folderWorkspaces:delete', (_event, rawArgs: unknown): boolean => {
+  ipcMain.handle('folderWorkspaces:delete', async (_event, rawArgs: unknown): Promise<boolean> => {
     const args = parseProjectGroupIpcArgs(
       FolderWorkspaceSelectorArgs,
       rawArgs,
       'invalid_folder_workspace_delete_args'
     )
-    const deleted = store.removeFolderWorkspace(args.folderWorkspaceId)
+    const deleted = runtime
+      ? (
+          await runtime.deleteFolderWorkspace(args.folderWorkspaceId, {
+            notify: false,
+            ...(args.preserveRendererWorkspaceKey ? { preserveRendererWorkspaceKey: true } : {})
+          })
+        ).deleted
+      : args.preserveRendererWorkspaceKey
+        ? store.removeFolderWorkspace(args.folderWorkspaceId, {
+            preserveRendererWorkspaceKey: true
+          })
+        : store.removeFolderWorkspace(args.folderWorkspaceId)
     if (deleted) {
       notifyReposChanged(mainWindow)
     }
@@ -1596,13 +1613,26 @@ export function registerRepoHandlers(mainWindow: BrowserWindow, store: Store): v
     return updated
   })
 
-  ipcMain.handle('projectGroups:delete', (_event, rawArgs: unknown): boolean => {
+  ipcMain.handle('projectGroups:delete', async (_event, rawArgs: unknown): Promise<boolean> => {
     const args = parseProjectGroupIpcArgs(
       ProjectGroupSelectorArgs,
       rawArgs,
       'invalid_project_group_delete_args'
     )
-    const deleted = store.deleteProjectGroup(args.groupId)
+    const deleted = runtime
+      ? (
+          await runtime.deleteProjectGroup(args.groupId, {
+            notify: false,
+            ...(args.preserveRendererWorkspaceIds
+              ? { preserveRendererWorkspaceIds: args.preserveRendererWorkspaceIds }
+              : {})
+          })
+        ).deleted
+      : args.preserveRendererWorkspaceIds
+        ? store.deleteProjectGroup(args.groupId, {
+            preserveRendererWorkspaceIds: args.preserveRendererWorkspaceIds
+          })
+        : store.deleteProjectGroup(args.groupId)
     if (deleted) {
       notifyReposChanged(mainWindow)
     }
@@ -1781,7 +1811,11 @@ export function registerRepoHandlers(mainWindow: BrowserWindow, store: Store): v
       const failedCount = results.filter((entry) => entry.status === 'failed').length
       if (importedCount + alreadyKnownCount === 0) {
         for (const group of groupResolver.getCreatedGroups().toReversed()) {
-          store.deleteProjectGroup(group.id)
+          if (runtime) {
+            await runtime.deleteProjectGroup(group.id, { notify: false })
+          } else {
+            store.deleteProjectGroup(group.id)
+          }
         }
       }
       invalidateAuthorizedRootsCache()

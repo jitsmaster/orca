@@ -192,7 +192,10 @@ describe('projectGroups IPC validation', () => {
     mockFilesystemProvider.stat.mockReset()
     mockFilesystemProvider.stat.mockRejectedValue(new Error('not found'))
     mockGitProvider.isGitRepoAsync.mockReset()
-    mockGitProvider.isGitRepoAsync.mockResolvedValue({ isRepo: true, rootPath: null })
+    mockGitProvider.isGitRepoAsync.mockImplementation(async (path: string) => ({
+      isRepo: path === '/srv/platform/api',
+      rootPath: null
+    }))
     mockGitProvider.listWorktrees.mockReset()
     mockGitProvider.listWorktrees.mockResolvedValue([])
     listWorktreeGraphMock.mockReset()
@@ -791,6 +794,52 @@ describe('projectGroups IPC validation', () => {
     expect(mockMultiplexer.notify).toHaveBeenCalledWith('session.registerRoot', {
       rootPath: '/srv/platform/api'
     })
+  })
+
+  it('delegates failed import group rollback through the runtime', async () => {
+    const group = {
+      id: 'group-rollback',
+      name: 'Platform',
+      parentPath: '/srv/platform',
+      parentGroupId: null,
+      createdFrom: 'folder-scan',
+      tabOrder: 0,
+      isCollapsed: false,
+      color: null,
+      createdAt: 1,
+      updatedAt: 1
+    }
+    const runtime = { deleteProjectGroup: vi.fn().mockResolvedValue({ deleted: true }) }
+    registerRepoHandlers(mockWindow as never, mockStore as never, runtime as never)
+    mockStore.createProjectGroup.mockReturnValue(group)
+    mockStore.addRepo.mockImplementation(() => {
+      throw new Error('persist failed')
+    })
+    mockGitProvider.isGitRepoAsync.mockImplementation(async (path: string) => ({
+      isRepo: path === '/srv/platform/api',
+      rootPath: null
+    }))
+    mockFilesystemProvider.stat.mockImplementation(async (path: string) => {
+      if (path === '/srv/platform/api/.git') {
+        return { type: 'directory', size: 0, mtime: 0 }
+      }
+      throw new Error('not found')
+    })
+    mockFilesystemProvider.readDir.mockImplementation(async (dirPath: string) =>
+      dirPath === '/srv/platform' ? [{ name: 'api', isDirectory: true, isSymlink: false }] : []
+    )
+
+    const result = await handlers.get('projectGroups:importNested')!(null, {
+      parentPath: '/srv/platform',
+      groupName: 'Platform',
+      projectPaths: ['/srv/platform/api'],
+      connectionId: 'conn-1',
+      mode: 'group'
+    })
+
+    expect(result).toMatchObject({ importedCount: 0, failedCount: 1 })
+    expect(runtime.deleteProjectGroup).toHaveBeenCalledWith(group.id, { notify: false })
+    expect(mockStore.deleteProjectGroup).not.toHaveBeenCalled()
   })
 
   it('resolves SSH linked worktree imports through the SSH provider worktree graph', async () => {

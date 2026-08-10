@@ -246,6 +246,21 @@ export function hasRegisteredRuntimeTerminalTab(tabId: string): boolean {
   return registeredTabs.has(tabId)
 }
 
+export function resolveMountedRuntimeTerminalPaneIdByPtyId(
+  tabId: string,
+  ptyId: string
+): { status: 'unmounted' | 'missing' } | { status: 'resolved'; paneId: number } {
+  const registered = registeredTabs.get(tabId)
+  if (!registered) {
+    return { status: 'unmounted' }
+  }
+  const pane = registered
+    .getManager()
+    ?.getPanes()
+    .find((candidate) => registered.getPtyIdForPane(candidate.id) === ptyId)
+  return pane ? { status: 'resolved', paneId: pane.id } : { status: 'missing' }
+}
+
 export function registerRuntimeTerminalTab(tab: RegisteredTerminalTab): () => void {
   registeredTabs.set(tab.tabId, tab)
   tabRegisteredAt.set(tab.tabId, Date.now())

@@ -64,7 +64,8 @@ const ProjectGroupUpdate = z.object({
 })
 
 const ProjectGroupSelector = z.object({
-  groupId: requiredString('Missing group id')
+  groupId: requiredString('Missing group id'),
+  preserveRendererWorkspaceIds: z.array(requiredString('Missing folder workspace id')).optional()
 })
 
 const ProjectGroupMoveProject = z.object({
@@ -136,7 +137,12 @@ export const REPO_METHODS: RpcMethod[] = [
   defineMethod({
     name: 'projectGroup.delete',
     params: ProjectGroupSelector,
-    handler: async (params, { runtime }) => runtime.deleteProjectGroup(params.groupId)
+    handler: async (params, { runtime }) =>
+      params.preserveRendererWorkspaceIds
+        ? runtime.deleteProjectGroup(params.groupId, {
+            preserveRendererWorkspaceIds: params.preserveRendererWorkspaceIds
+          })
+        : runtime.deleteProjectGroup(params.groupId)
   }),
   defineMethod({
     name: 'projectGroup.moveProject',

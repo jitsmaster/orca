@@ -2682,7 +2682,7 @@ function removeWorkspaceSessionOwners(
   return next
 }
 
-function inferFolderScopeConnectionIdForMigration(args: {
+function inferFolderScopeConnectionId(args: {
   folderPath: string
   projectGroupId: string
   projectGroups: readonly ProjectGroup[]
@@ -2725,7 +2725,7 @@ function backfillFolderScopeConnectionIds(state: PersistedState): {
     if (group.connectionId || !group.parentPath) {
       return group
     }
-    const connectionId = inferFolderScopeConnectionIdForMigration({
+    const connectionId = inferFolderScopeConnectionId({
       folderPath: group.parentPath,
       projectGroupId: group.id,
       projectGroups: groups,
@@ -2745,7 +2745,7 @@ function backfillFolderScopeConnectionIds(state: PersistedState): {
     const groupConnectionId = groupsById.get(workspace.projectGroupId)?.connectionId ?? null
     const connectionId =
       groupConnectionId ??
-      inferFolderScopeConnectionIdForMigration({
+      inferFolderScopeConnectionId({
         folderPath: workspace.folderPath,
         projectGroupId: workspace.projectGroupId,
         projectGroups,
@@ -2761,6 +2761,32 @@ function backfillFolderScopeConnectionIds(state: PersistedState): {
     changed,
     state: changed ? { ...state, projectGroups, folderWorkspaces } : state
   }
+}
+
+function getFolderWorkspacePersistenceHostId(
+  workspace: FolderWorkspace,
+  projectGroups: readonly ProjectGroup[],
+  repos: readonly Repo[]
+): ExecutionHostId {
+  const explicitHostId = normalizeExecutionHostId(workspace.executionHostId)
+  if (explicitHostId) {
+    return explicitHostId
+  }
+  const group = projectGroups.find((entry) => entry.id === workspace.projectGroupId)
+  const groupHostId = normalizeExecutionHostId(group?.executionHostId)
+  if (groupHostId) {
+    return groupHostId
+  }
+  const connectionId =
+    workspace.connectionId ??
+    group?.connectionId ??
+    inferFolderScopeConnectionId({
+      folderPath: workspace.folderPath,
+      projectGroupId: workspace.projectGroupId,
+      projectGroups,
+      repos
+    })
+  return connectionId ? toSshExecutionHostId(connectionId) : LOCAL_EXECUTION_HOST_ID
 }
 
 function deleteRemovedTerminalScrollbackSnapshots(
@@ -4422,9 +4448,15 @@ export class Store {
     return group
   }
 
-  deleteProjectGroup(groupId: string): boolean {
+  deleteProjectGroup(
+    groupId: string,
+    options: { preserveRendererWorkspaceIds?: readonly string[] } = {}
+  ): boolean {
     const before = this.state.projectGroups?.length ?? 0
-    const deletedGroupIds = getProjectGroupSubtreeIds(this.state.projectGroups ?? [], groupId)
+    const projectGroups = this.state.projectGroups ?? []
+    const repos = this.state.repos
+    const deletedGroupIds = getProjectGroupSubtreeIds(projectGroups, groupId)
+    const preservedWorkspaceIds = new Set(options.preserveRendererWorkspaceIds ?? [])
     this.state.projectGroups = (this.state.projectGroups ?? []).filter(
       (group) => !deletedGroupIds.has(group.id)
     )
@@ -4440,12 +4472,15 @@ export class Store {
     const removedFolderWorkspaceKeys = new Set<string>()
     for (const workspace of this.state.folderWorkspaces ?? []) {
       if (deletedGroupIds.has(workspace.projectGroupId)) {
-        removedFolderWorkspaceKeys.add(folderWorkspaceKey(workspace.id))
-        this.state.workspaceSession = removeWorkspaceSessionOwner(
-          this.state.workspaceSession,
-          folderWorkspaceKey(workspace.id)
-        )!
-        this.removeWorkspaceLineageForFolderParent(workspace.id)
+        const workspaceKey = folderWorkspaceKey(workspace.id)
+        this.removeWorkspaceSessionStateForWorktree(
+          workspaceKey,
+          getFolderWorkspacePersistenceHostId(workspace, projectGroups, repos)
+        )
+        if (!preservedWorkspaceIds.has(workspace.id)) {
+          removedFolderWorkspaceKeys.add(workspaceKey)
+          this.removeWorkspaceLineageForFolderParent(workspace.id)
+        }
       }
     }
     this.state.folderWorkspaces = (this.state.folderWorkspaces ?? []).filter(
@@ -4615,20 +4650,33 @@ export class Store {
     return workspace
   }
 
-  removeFolderWorkspace(id: string): boolean {
+  removeFolderWorkspace(
+    id: string,
+    options: { preserveRendererWorkspaceKey?: boolean } = {}
+  ): boolean {
     const before = this.state.folderWorkspaces?.length ?? 0
+    const workspace = (this.state.folderWorkspaces ?? []).find((entry) => entry.id === id)
     this.state.folderWorkspaces = (this.state.folderWorkspaces ?? []).filter(
       (workspace) => workspace.id !== id
     )
     if ((this.state.folderWorkspaces?.length ?? 0) === before) {
       return false
     }
-    this.state.workspaceSession = removeWorkspaceSessionOwner(
-      this.state.workspaceSession,
-      folderWorkspaceKey(id)
-    )!
-    this.removeWorkspaceLineageForFolderParent(id)
-    this.pruneMobileClientTabSelections((worktreeId) => worktreeId === folderWorkspaceKey(id))
+    const workspaceKey = folderWorkspaceKey(id)
+    this.removeWorkspaceSessionStateForWorktree(
+      workspaceKey,
+      workspace
+        ? getFolderWorkspacePersistenceHostId(
+            workspace,
+            this.state.projectGroups ?? [],
+            this.state.repos
+          )
+        : LOCAL_EXECUTION_HOST_ID
+    )
+    if (!options.preserveRendererWorkspaceKey) {
+      this.removeWorkspaceLineageForFolderParent(id)
+      this.pruneMobileClientTabSelections((worktreeId) => worktreeId === workspaceKey)
+    }
     this.scheduleSave()
     return true
   }

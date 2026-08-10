@@ -1,11 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FolderWorkspace, ProjectGroup } from '../../../../shared/types'
 import {
+  createCompatibleRuntimeStatusResponse,
   createCompatibleRuntimeStatusResponseIfNeeded,
   type RuntimeEnvironmentCallRequest
 } from '../../runtime/runtime-compatibility-test-fixture'
 import { clearRuntimeCompatibilityCacheForTests } from '../../runtime/runtime-rpc-client'
-import { createTestStore } from './store-test-helpers'
+import { FOLDER_WORKSPACE_BACKEND_TEARDOWN_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
+import { folderWorkspaceKey } from '../../../../shared/workspace-scope'
+import { createTestStore, makeTab } from './store-test-helpers'
 
 const folderWorkspacesUpdate = vi.fn()
 const folderWorkspacesDelete = vi.fn()
@@ -401,6 +404,46 @@ describe('folder workspace owner-routed mutations', () => {
     expect(runtimeEnvironmentCall).not.toHaveBeenCalled()
   })
 
+  it('tells local deletion to preserve a same-ID runtime sibling graph', async () => {
+    const localWorkspace = makeFolderWorkspace({ executionHostId: 'local' })
+    const runtimeWorkspace = makeFolderWorkspace({ executionHostId: 'runtime:env-sibling' })
+    const workspaceKey = folderWorkspaceKey(localWorkspace.id)
+    const targetTab = makeTab({ id: 'target-tab', worktreeId: workspaceKey, ptyId: 'local-pty' })
+    const siblingPtyId = 'remote:env-sibling@@term_sibling'
+    const siblingTab = makeTab({
+      id: 'sibling-tab',
+      worktreeId: workspaceKey,
+      ptyId: siblingPtyId
+    })
+    folderWorkspacesDelete.mockResolvedValue(true)
+    const store = createTestStore()
+    store.setState({
+      activeWorktreeId: workspaceKey,
+      activeWorkspaceExecutionHostId: 'local',
+      projectGroups: [
+        { ...projectGroup, executionHostId: 'local' },
+        { ...projectGroup, executionHostId: 'runtime:env-sibling' }
+      ],
+      folderWorkspaces: [localWorkspace, runtimeWorkspace],
+      tabsByWorktree: { [workspaceKey]: [targetTab, siblingTab] },
+      ptyIdsByTabId: {
+        [targetTab.id]: ['local-pty'],
+        [siblingTab.id]: [siblingPtyId]
+      }
+    })
+
+    await expect(store.getState().deleteFolderWorkspace(localWorkspace.id)).resolves.toBe(true)
+
+    expect(folderWorkspacesDelete).toHaveBeenCalledWith({
+      folderWorkspaceId: localWorkspace.id,
+      preserveRendererWorkspaceKey: true
+    })
+    expect(store.getState().folderWorkspaces).toEqual([runtimeWorkspace])
+    expect(store.getState().tabsByWorktree[workspaceKey]).toEqual([siblingTab])
+    expect(store.getState().ptyIdsByTabId[targetTab.id]).toBeUndefined()
+    expect(store.getState().ptyIdsByTabId[siblingTab.id]).toEqual([siblingPtyId])
+  })
+
   it('deletes a runtime folder through its owner instead of the focused runtime', async () => {
     const folderWorkspace = makeFolderWorkspace({ id: 'folder-runtime' })
     runtimeEnvironmentCall.mockResolvedValue({
@@ -425,5 +468,83 @@ describe('folder workspace owner-routed mutations', () => {
       timeoutMs: 15_000
     })
     expect(folderWorkspacesDelete).not.toHaveBeenCalled()
+  })
+
+  it('closes exact terminals before deleting through a legacy runtime', async () => {
+    const folderWorkspace = makeFolderWorkspace({
+      id: 'folder-legacy',
+      executionHostId: 'runtime:env-owner'
+    })
+    const siblingWorkspace = {
+      ...folderWorkspace,
+      name: 'Sibling folder',
+      executionHostId: 'runtime:env-sibling' as const
+    }
+    const workspaceKey = folderWorkspaceKey(folderWorkspace.id)
+    const targetPtyId = 'remote:env-owner@@pty-owner'
+    const siblingPtyId = 'remote:env-sibling@@pty-1'
+    const targetTab = makeTab({
+      id: 'target-tab',
+      worktreeId: workspaceKey,
+      ptyId: targetPtyId
+    })
+    const siblingTab = makeTab({
+      id: 'sibling-tab',
+      worktreeId: workspaceKey,
+      ptyId: siblingPtyId
+    })
+    const oldRuntimeStatus = createCompatibleRuntimeStatusResponse('runtime-owner')
+    if (oldRuntimeStatus.ok) {
+      oldRuntimeStatus.result.capabilities = oldRuntimeStatus.result.capabilities?.filter(
+        (capability) => capability !== FOLDER_WORKSPACE_BACKEND_TEARDOWN_RUNTIME_CAPABILITY
+      )
+    }
+    runtimeEnvironmentTransportCall.mockImplementation((args: RuntimeEnvironmentCallRequest) =>
+      args.method === 'status.get' ? oldRuntimeStatus : runtimeEnvironmentCall(args)
+    )
+    runtimeEnvironmentCall.mockImplementation(async (args: RuntimeEnvironmentCallRequest) => ({
+      id: `rpc-${args.method}`,
+      ok: true,
+      result: args.method === 'terminal.close' ? { close: { closed: true } } : { deleted: true },
+      _meta: { runtimeId: 'runtime-owner' }
+    }))
+    const store = createTestStore()
+    store.setState({
+      activeWorktreeId: workspaceKey,
+      activeWorkspaceExecutionHostId: folderWorkspace.executionHostId,
+      projectGroups: [
+        { ...projectGroup, executionHostId: folderWorkspace.executionHostId },
+        { ...projectGroup, executionHostId: siblingWorkspace.executionHostId }
+      ],
+      folderWorkspaces: [folderWorkspace, siblingWorkspace],
+      tabsByWorktree: { [workspaceKey]: [targetTab, siblingTab] },
+      ptyIdsByTabId: {
+        [targetTab.id]: [targetPtyId],
+        [siblingTab.id]: [siblingPtyId]
+      }
+    })
+
+    await expect(store.getState().deleteFolderWorkspace(folderWorkspace.id)).resolves.toBe(true)
+
+    expect(runtimeEnvironmentCall.mock.calls.map(([request]) => request.method)).toEqual([
+      'terminal.close',
+      'folderWorkspace.delete'
+    ])
+    expect(
+      runtimeEnvironmentCall.mock.calls.find(
+        ([request]) => request.method === 'terminal.close'
+      )?.[0].params
+    ).toEqual({ terminal: 'pty-owner' })
+    expect(
+      runtimeEnvironmentCall.mock.calls.find(
+        ([request]) => request.method === 'folderWorkspace.delete'
+      )?.[0].params
+    ).toEqual({
+      folderWorkspaceId: folderWorkspace.id
+    })
+    expect(store.getState().folderWorkspaces).toEqual([siblingWorkspace])
+    expect(store.getState().tabsByWorktree[workspaceKey]).toEqual([siblingTab])
+    expect(store.getState().ptyIdsByTabId[targetTab.id]).toBeUndefined()
+    expect(store.getState().ptyIdsByTabId[siblingTab.id]).toEqual([siblingPtyId])
   })
 })

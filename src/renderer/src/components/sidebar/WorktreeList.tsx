@@ -304,6 +304,7 @@ import {
   filterFolderWorkspacesForVisibleHosts,
   filterProjectGroupsForVisibleHosts,
   getFolderPathStatusRouteOptionsForRows,
+  getProjectGroupExecutionHostIdForRows,
   getVisibleSidebarHostIdSet
 } from './worktree-list-host-filtering'
 import { getFolderWorkspaceCardPrDisplay } from './folder-workspace-card-pr-display'
@@ -322,6 +323,7 @@ type ProjectGroupNameDialogState =
 type ProjectGroupDeleteDialogState = {
   groupId: string
   groupName: string
+  hostId?: ExecutionHostId
   removeContainedProjects: boolean
 }
 
@@ -658,7 +660,7 @@ type VirtualizedWorktreeViewportProps = {
   handleMoveProjectToGroup: (repo: Repo, groupId: string) => void
   handleRemoveProjectFromGroup: (repo: Repo) => void
   handleRenameProjectGroup: (groupId: string, currentName: string) => void
-  handleDeleteProjectGroup: (groupId: string, groupName: string) => void
+  handleDeleteProjectGroup: (projectGroup: ProjectGroup, groupName: string) => void
   handleCreateFolderWorkspace: (projectGroup: ProjectGroup) => void
   activeModal: string
   pendingRevealWorktree: PendingSidebarWorktreeReveal | null
@@ -4440,7 +4442,7 @@ const VirtualizedWorktreeViewport = React.memo(function VirtualizedWorktreeViewp
                               variant="destructive"
                               onSelect={() => {
                                 if (row.projectGroup?.id) {
-                                  handleDeleteProjectGroup(row.projectGroup.id, row.label)
+                                  handleDeleteProjectGroup(row.projectGroup, row.label)
                                 }
                               }}
                             >
@@ -6221,22 +6223,47 @@ const WorktreeList = React.memo(function WorktreeList({
     if (!projectGroupDeleteDialog) {
       return null
     }
-    return selectProjectGroupRemovalTargets(projectGroups, repos, projectGroupDeleteDialog.groupId)
-  }, [projectGroupDeleteDialog, projectGroups, repos])
+    const hostId = projectGroupDeleteDialog.hostId
+    const candidateProjectGroups = hostId
+      ? projectGroups.filter(
+          (group) => getProjectGroupExecutionHostIdForRows(group, defaultHostId) === hostId
+        )
+      : projectGroups
+    const candidateRepos = hostId
+      ? repos.filter((repo) => getRepoExecutionHostId(repo) === hostId)
+      : repos
+    const targets = selectProjectGroupRemovalTargets(
+      candidateProjectGroups,
+      candidateRepos,
+      projectGroupDeleteDialog.groupId
+    )
+    const projectDisplayNameById = new Map(
+      candidateRepos.map((repo) => [repo.id, repo.displayName])
+    )
+    return {
+      ...targets,
+      projectNames: targets.projectIds.map(
+        (projectId) => projectDisplayNameById.get(projectId) ?? projectId
+      )
+    }
+  }, [defaultHostId, projectGroupDeleteDialog, projectGroups, repos])
   const projectGroupDeleteProjectCount = projectGroupDeleteTargets?.projectIds.length ?? 0
-  const projectGroupDeleteProjectNames = useMemo(
-    () =>
-      (projectGroupDeleteTargets?.projectIds ?? []).map(
-        (projectId) => repoMap.get(projectId)?.displayName ?? projectId
-      ),
-    [projectGroupDeleteTargets, repoMap]
-  )
+  const projectGroupDeleteProjectNames = projectGroupDeleteTargets?.projectNames ?? []
   const projectGroupRemoveContainedProjects =
     projectGroupDeleteProjectCount > 0 && projectGroupDeleteDialog?.removeContainedProjects === true
 
-  const handleDeleteProjectGroup = useCallback((groupId: string, groupName: string) => {
-    setProjectGroupDeleteDialog({ groupId, groupName, removeContainedProjects: false })
-  }, [])
+  const handleDeleteProjectGroup = useCallback(
+    (projectGroup: ProjectGroup, groupName: string) => {
+      const hostId = getProjectGroupExecutionHostIdForRows(projectGroup, defaultHostId)
+      setProjectGroupDeleteDialog({
+        groupId: projectGroup.id,
+        groupName,
+        hostId,
+        removeContainedProjects: false
+      })
+    },
+    [defaultHostId]
+  )
 
   const handleConfirmDeleteProjectGroup = useCallback(async () => {
     if (!projectGroupDeleteDialog) {
@@ -6246,6 +6273,7 @@ const WorktreeList = React.memo(function WorktreeList({
       const result = await deleteProjectGroupWithContainedProjects(
         projectGroupDeleteDialog.groupId,
         {
+          hostId: projectGroupDeleteDialog.hostId,
           removeContainedProjects: projectGroupRemoveContainedProjects
         }
       )

@@ -122,6 +122,44 @@ describe('selected Add Project owner routing', () => {
     ])
   })
 
+  it('updates only the focused host group when another runtime has the same ID', async () => {
+    const targetGroup = {
+      ...projectGroup,
+      id: 'shared-group',
+      executionHostId: 'runtime:env-1' as const
+    }
+    const siblingGroup = {
+      ...targetGroup,
+      name: 'Sibling platform',
+      parentPath: '/sibling/platform',
+      executionHostId: 'runtime:env-2' as const
+    }
+    const updatedGroup = { ...targetGroup, name: 'Updated platform', updatedAt: 2 }
+    runtimeEnvironmentCall.mockResolvedValue({
+      id: 'rpc-update-group',
+      ok: true,
+      result: { group: { ...updatedGroup, executionHostId: undefined } },
+      _meta: { runtimeId: 'runtime-remote' }
+    })
+    const store = createTestStore()
+    store.setState({
+      settings: { activeRuntimeEnvironmentId: 'env-1' } as never,
+      projectGroups: [targetGroup, siblingGroup]
+    })
+
+    await expect(
+      store.getState().updateProjectGroup(targetGroup.id, { name: updatedGroup.name })
+    ).resolves.toBe(true)
+
+    expect(runtimeEnvironmentCall).toHaveBeenCalledWith({
+      selector: 'env-1',
+      method: 'projectGroup.update',
+      params: { groupId: targetGroup.id, updates: { name: updatedGroup.name } },
+      timeoutMs: 15_000
+    })
+    expect(store.getState().projectGroups).toEqual([updatedGroup, siblingGroup])
+  })
+
   it('merges explicit runtime groups and folders without erasing local siblings', async () => {
     const localGroup = { ...projectGroup, id: 'group-local', executionHostId: 'local' as const }
     const runtimeGroup = { ...projectGroup, name: 'Runtime' }

@@ -690,14 +690,18 @@ const WorktreeContextMenu = React.memo(function WorktreeContextMenu({
         return
       }
       if (folderWorkspaceId) {
-        void deleteFolderWorkspace(folderWorkspaceId).then((deleted) => {
-          if (
-            deleted &&
-            useAppStore.getState().activeWorktreeId === folderWorkspaceKey(folderWorkspaceId)
-          ) {
-            setActiveWorktree(null)
+        void deleteFolderWorkspace(folderWorkspaceId, { hostId: worktree.hostId }).then(
+          (deleted) => {
+            const state = useAppStore.getState()
+            if (
+              deleted &&
+              state.activeWorktreeId === folderWorkspaceKey(folderWorkspaceId) &&
+              state.activeWorkspaceExecutionHostId === (worktree.hostId ?? null)
+            ) {
+              setActiveWorktree(null)
+            }
           }
-        })
+        )
         restoreSidebarPosition()
         return
       }
@@ -714,6 +718,7 @@ const WorktreeContextMenu = React.memo(function WorktreeContextMenu({
     isMultiContext,
     setActiveWorktree,
     setMenuOpenState,
+    worktree.hostId,
     worktree.id
   ])
 

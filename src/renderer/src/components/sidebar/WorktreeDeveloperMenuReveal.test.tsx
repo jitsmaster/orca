@@ -5,34 +5,46 @@
  * defect. These assert the modifier actually reaches the reveal state through
  * the real right-click handler.
  */
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import type { ReactNode } from 'react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import type { MouseEventHandler, PointerEventHandler, ReactNode } from 'react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Worktree } from '../../../../shared/types'
 
-vi.mock('@/store', () => {
-  const state = {
-    tabsByWorktree: {},
-    ptyIdsByTabId: {},
-    browserTabsByWorktree: {},
-    deleteStateByWorktreeId: {},
-    worktreeLineageById: {},
-    workspaceLineageByChildKey: {},
-    workspaceStatuses: [],
-    projectGroups: [],
-    settings: null,
-    updateWorktreeMeta: vi.fn(),
-    setWorktreesPinnedAndReveal: vi.fn(),
-    openModal: vi.fn(),
-    createProjectGroup: vi.fn(),
-    moveProjectToGroup: vi.fn(),
-    deleteFolderWorkspace: vi.fn(),
-    setActiveWorktree: vi.fn()
-  }
+const storeDoubles = vi.hoisted(() => {
+  const deleteFolderWorkspace = vi.fn()
+  const setActiveWorktree = vi.fn()
   return {
-    useAppStore: Object.assign((selector: (value: typeof state) => unknown) => selector(state), {
-      getState: () => state
-    })
+    deleteFolderWorkspace,
+    setActiveWorktree,
+    state: {
+      activeWorktreeId: null as string | null,
+      activeWorkspaceExecutionHostId: null as string | null,
+      tabsByWorktree: {},
+      ptyIdsByTabId: {},
+      browserTabsByWorktree: {},
+      deleteStateByWorktreeId: {},
+      worktreeLineageById: {},
+      workspaceLineageByChildKey: {},
+      workspaceStatuses: [],
+      projectGroups: [],
+      settings: null,
+      updateWorktreeMeta: vi.fn(),
+      setWorktreesPinnedAndReveal: vi.fn(),
+      openModal: vi.fn(),
+      createProjectGroup: vi.fn(),
+      moveProjectToGroup: vi.fn(),
+      deleteFolderWorkspace,
+      setActiveWorktree
+    }
+  }
+})
+
+vi.mock('@/store', () => {
+  return {
+    useAppStore: Object.assign(
+      (selector: (value: typeof storeDoubles.state) => unknown) => selector(storeDoubles.state),
+      { getState: () => storeDoubles.state }
+    )
   }
 })
 
@@ -51,14 +63,39 @@ vi.mock('@/components/ui/tooltip', () => ({
   TooltipTrigger: ({ children }: { children: ReactNode }) => <>{children}</>
 }))
 
-// Why: Radix portals/submenus need real layout; a passthrough keeps the test on
-// the reveal decision rather than menu mechanics.
+// Why: keep selection testable without Radix portal and layout behavior.
 vi.mock('@/components/ui/dropdown-menu', () => {
   const passthrough = ({ children }: { children?: ReactNode }) => <>{children}</>
+  const content = ({
+    children,
+    onClickCapture,
+    onPointerDownCapture
+  }: {
+    children?: ReactNode
+    onClickCapture?: MouseEventHandler<HTMLDivElement>
+    onPointerDownCapture?: PointerEventHandler<HTMLDivElement>
+  }) => (
+    <div onClickCapture={onClickCapture} onPointerDownCapture={onPointerDownCapture}>
+      {children}
+    </div>
+  )
+  const item = ({
+    children,
+    disabled,
+    onSelect
+  }: {
+    children?: ReactNode
+    disabled?: boolean
+    onSelect?: () => void
+  }) => (
+    <button type="button" disabled={disabled} onClick={onSelect}>
+      {children}
+    </button>
+  )
   return {
     DropdownMenu: passthrough,
-    DropdownMenuContent: passthrough,
-    DropdownMenuItem: passthrough,
+    DropdownMenuContent: content,
+    DropdownMenuItem: item,
     DropdownMenuLabel: passthrough,
     DropdownMenuRadioGroup: passthrough,
     DropdownMenuRadioItem: passthrough,
@@ -82,7 +119,7 @@ vi.mock('./sleep-worktree-flow', () => ({ runSleepWorktrees: vi.fn() }))
 
 const WorktreeContextMenu = (await import('./WorktreeContextMenu')).default
 
-function makeWorktree(): Worktree {
+function makeWorktree(overrides: Partial<Worktree> = {}): Worktree {
   return {
     id: 'repo-1::/repo/wt',
     repoId: 'repo-1',
@@ -100,15 +137,16 @@ function makeWorktree(): Worktree {
     isUnread: false,
     isPinned: false,
     sortOrder: 0,
-    lastActivityAt: 0
+    lastActivityAt: 0,
+    ...overrides
   } as Worktree
 }
 
 // Why: assert on text content — the passthrough menu mock renders each label as
 // a bare text node beside its icon, which getByText's element matching skips.
-function openContextMenu(altKey: boolean): string {
+function openContextMenu(altKey: boolean, worktree: Worktree = makeWorktree()): string {
   const { container } = render(
-    <WorktreeContextMenu worktree={makeWorktree()}>
+    <WorktreeContextMenu worktree={worktree}>
       <div data-testid="card">card</div>
     </WorktreeContextMenu>
   )
@@ -117,9 +155,15 @@ function openContextMenu(altKey: boolean): string {
 }
 
 describe('Developer submenu reveal', () => {
+  beforeEach(() => {
+    storeDoubles.state.activeWorktreeId = null
+    storeDoubles.state.activeWorkspaceExecutionHostId = null
+  })
+
   afterEach(() => {
     cleanup()
     vi.clearAllMocks()
+    vi.useRealTimers()
   })
 
   it('hides the Developer submenu on a plain right-click', () => {
@@ -135,5 +179,23 @@ describe('Developer submenu reveal', () => {
 
     expect(text).toContain('Developer')
     expect(text).toContain('Park terminal')
+  })
+
+  it('routes folder deletion to its owner and clears only that host selection', async () => {
+    storeDoubles.deleteFolderWorkspace.mockResolvedValue(true)
+    storeDoubles.state.activeWorktreeId = 'folder:folder-1'
+    storeDoubles.state.activeWorkspaceExecutionHostId = 'runtime:env-b'
+    openContextMenu(false, makeWorktree({ id: 'folder:folder-1', hostId: 'runtime:env-b' }))
+
+    const deleteButton = screen.getByRole('button', { name: 'Remove Workspace' })
+    fireEvent.pointerDown(deleteButton, { button: 0 })
+    fireEvent.click(deleteButton)
+
+    await waitFor(() => {
+      expect(storeDoubles.deleteFolderWorkspace).toHaveBeenCalledWith('folder-1', {
+        hostId: 'runtime:env-b'
+      })
+    })
+    expect(storeDoubles.setActiveWorktree).toHaveBeenCalledWith(null)
   })
 })
