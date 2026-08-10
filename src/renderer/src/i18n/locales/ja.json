@@ -11493,17 +11493,6 @@
           "yoloPermissionsInfo": "Agent 権限情報",
           "yoloPermissionsTooltip": "Agent の権限チェックをスキップして割り込みを減らす"
         },
-        "FeatureSetupChecklist": {
-          "77f74946f5": "Agent は相互にメッセージを送信し、タスクを実行し、引き継ぎを調整できます。",
-          "399cf885c0": "Agent オーケストレーション",
-          "c5292c409d": "Agent は、要求に応じてアプリウィンドウを検査し、ローカルアプリを操作できます。",
-          "1ecfb490ac": "コンピュータ操作",
-          "01426f3a23": "Agent はサイトを移動し、ページを検査し、ブラウザのタスクを実行できます。",
-          "ea85d9e628": "Agent ブラウザの使用",
-          "linearTicketsTitle": "Linear Agent スキル",
-          "linearTicketsDescription": "Agent はリンクされた Linear タスクを使って、チケットを踏まえたより詳しい引き継ぎができます。",
-          "linearTicketsSetupSummary": "Linear ワークスペースに推奨。Linear 接続設定には影響しません。"
-        },
         "FeatureSetupInlineTerminal": {
           "789b59936e": "Enter キーを押してコマンドを実行し、要求されたら npx を確認します。これは、後で [設定] で設定することもできます。",
           "47fc6cc6dc": "スキルセットアップコマンド",
@@ -11652,9 +11641,6 @@
               "52acfbef51": "進行状況を保存できませんでした"
             }
           }
-        },
-        "AgentFeatureSetupStep": {
-          "97dcdc010f": "CLI とスキルをインストール"
         },
         "WindowsTerminalStep": {
           "powerShell": "PowerShell",
