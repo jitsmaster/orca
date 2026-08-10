@@ -186,9 +186,9 @@ export function readPersistedWindowsPathSegments(options: ReadWindowsPathOptions
     return segments
   }
 
-  // Why: local PTY spawn is a hot path on Windows, and each uncached read
-  // runs two synchronous `reg.exe query` subprocesses. A short TTL keeps
-  // terminal bursts cheap while still picking up newly installed CLIs soon.
+  // Why: local PTY spawn is a hot path on Windows, and each uncached refresh performs two
+  // synchronous native registry reads. A short TTL keeps terminal bursts cheap while still
+  // picking up newly installed CLIs soon.
   return cachePersistedWindowsPathSegments(segments, failedReads)
 }
 
