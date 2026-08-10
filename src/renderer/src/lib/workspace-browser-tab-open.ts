@@ -3,6 +3,7 @@ import { createWebRuntimeSessionBrowserTab } from '@/runtime/web-runtime-session
 import { useAppStore } from '@/store'
 import type { AppState } from '@/store/types'
 import {
+  LOCAL_EXECUTION_HOST_ID,
   parseExecutionHostId,
   toRuntimeExecutionHostId,
   type ExecutionHostId
@@ -119,6 +120,22 @@ function effectiveClientProfileId(state: AppState, hostId: ExecutionHostId): str
   )
 }
 
+function createClientBrowserTab(
+  state: AppState,
+  request: OpenWorkspaceBrowserTabRequest,
+  hostId: ExecutionHostId,
+  title: string
+): void {
+  state.createBrowserTab(request.workspaceId, request.url, {
+    activate: true,
+    browserRuntimeEnvironmentId: null,
+    focusAddressBar: false,
+    sessionProfileId: effectiveClientProfileId(state, hostId),
+    targetGroupId: request.targetGroupId,
+    title
+  })
+}
+
 export async function openWorkspaceBrowserTab(
   request: OpenWorkspaceBrowserTabRequest
 ): Promise<void> {
@@ -133,17 +150,12 @@ export async function openWorkspaceBrowserTab(
   }
   if (resolution.owner.kind === 'client') {
     try {
-      state.createBrowserTab(request.workspaceId, request.url, {
-        activate: true,
-        browserRuntimeEnvironmentId: null,
-        focusAddressBar: false,
-        sessionProfileId: effectiveClientProfileId(
-          state,
-          resolution.owner.workspaceExecutionHostId
-        ),
-        targetGroupId: request.targetGroupId,
-        title: presentation.title
-      })
+      createClientBrowserTab(
+        state,
+        request,
+        resolution.owner.workspaceExecutionHostId,
+        presentation.title
+      )
     } catch {
       throw new Error(presentation.error)
     }
@@ -165,6 +177,10 @@ export async function openWorkspaceBrowserTab(
     throw new Error(presentation.error)
   }
   if (!created) {
-    throw new Error(presentation.error)
+    try {
+      createClientBrowserTab(state, request, LOCAL_EXECUTION_HOST_ID, presentation.title)
+    } catch {
+      throw new Error(presentation.error)
+    }
   }
 }

@@ -40,12 +40,16 @@ export function EntryStatusRow({
 }
 
 export function EntryActionRow({
+  disabled = false,
   id,
+  loading = false,
   onClick,
   option,
   selected
 }: {
+  disabled?: boolean
   id: string
+  loading?: boolean
   onClick: () => void
   option: ActiveOption
   selected: boolean
@@ -58,15 +62,20 @@ export function EntryActionRow({
       id={id}
       role="option"
       aria-selected={selected}
+      disabled={disabled}
       className={cn(
-        'flex h-6 w-full items-center gap-1.5 rounded-[7px] px-1 text-left text-[11px] leading-5 outline-none',
+        'flex h-6 w-full items-center gap-1.5 rounded-[7px] px-1 text-left text-[11px] leading-5 outline-none disabled:cursor-not-allowed disabled:opacity-50',
         selected
           ? 'bg-black/8 text-accent-foreground dark:bg-white/14'
           : 'text-muted-foreground hover:bg-black/8 hover:text-accent-foreground dark:hover:bg-white/14'
       )}
       onClick={onClick}
     >
-      {presentation.icon}
+      {loading ? (
+        <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden="true" />
+      ) : (
+        presentation.icon
+      )}
       <span className={cn('min-w-0 truncate font-medium', presentation.showDetail && 'shrink-0')}>
         {presentation.label}
       </span>

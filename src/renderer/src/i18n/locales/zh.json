@@ -559,6 +559,14 @@
           }
         }
       },
+      "browser": {
+        "tab": {
+          "open": {
+            "urlFailed": "无法打开网址。",
+            "searchFailed": "无法使用 {{value0}} 搜索。"
+          }
+        }
+      },
       "worktree": {
         "palette": {
           "search": {
@@ -3005,7 +3013,9 @@
             "2c38630a01": "工作区已不存在",
             "4f0d9a71c2": "标签页已不存在",
             "d7d496a451": "浏览器页面已不存在",
-            "7726ce9970": "移动模拟器标签页已不存在"
+            "7726ce9970": "移动模拟器标签页已不存在",
+            "chooseAction": "请选择一项操作。",
+            "searchProvider": "使用 {{value0}} 搜索"
           },
           "TabBarQuickCommandsButton": {
             "a2c7a33831": "命令",

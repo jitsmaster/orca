@@ -20,6 +20,7 @@ const IPV4_PATTERN =
   /^(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$/
 const DOMAIN_PATTERN = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/i
 const HTTP_SCHEME_PATTERN = /^https?:\/\//i
+const BRACKETED_IPV6_ATTEMPT_PATTERN = /^\[[0-9a-f:]+\](?::[^/?#]*)?(?:[/?#].*)?$/i
 const SCHEME_PREFIX_PATTERN = /^[a-z][a-z0-9+.-]*:/i
 const SCHEME_WITH_SLASHES_PATTERN = /^[a-z][a-z0-9+.-]*:\/\//i
 
@@ -118,7 +119,10 @@ export function classifyHostUrl(query: string): HostUrlClassification | null {
   const candidate = splitHostCandidate(query)
   if (!candidate) {
     const localDevUrl = classifySchemeLessLocalDevAddress(query)
-    return localDevUrl?.hostname ? { kind: 'host-url', url: localDevUrl.href } : null
+    if (localDevUrl?.hostname) {
+      return { kind: 'host-url', url: localDevUrl.href }
+    }
+    return BRACKETED_IPV6_ATTEMPT_PATTERN.test(query) ? invalidUrl() : null
   }
   if (candidate.port !== null && !/^\d+$/.test(candidate.port)) {
     return invalidUrl()

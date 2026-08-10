@@ -11,7 +11,8 @@ import type { OpenFile } from '@/store/slices/editor'
 import {
   buildSearchUrl,
   DEFAULT_SEARCH_ENGINE,
-  type SearchEngine
+  type SearchEngine,
+  type SearchUrlOptions
 } from '../../../../shared/browser-url'
 import type { RuntimeFileListState } from '../quick-open-file-list'
 import { openWorkspaceBrowserTab } from '@/lib/workspace-browser-tab-open'
@@ -76,6 +77,7 @@ type OpenTabEntryWithOperationsArgs = {
   allowAbsolutePaths: boolean
   localPlatform: TabEntryLocalPlatform
   searchEngine: SearchEngine
+  searchUrlOptions?: SearchUrlOptions
   classification?: TabEntryActionClassification
   operations: TabEntryOperations
 }
@@ -152,6 +154,7 @@ export async function openTabEntryWithOperations({
   query,
   runtimeContext,
   searchEngine,
+  searchUrlOptions,
   worktreeId,
   worktreePath
 }: OpenTabEntryWithOperationsArgs): Promise<void> {
@@ -176,7 +179,7 @@ export async function openTabEntryWithOperations({
     await operations.openWorkspaceBrowserTab({
       workspaceId: worktreeId,
       targetGroupId: groupId,
-      url: buildSearchUrl(classification.query, classification.engine),
+      url: buildSearchUrl(classification.query, classification.engine, searchUrlOptions),
       intent: { kind: 'search', engine: classification.engine }
     })
     return
@@ -247,7 +250,9 @@ export async function openTabBarEntry(args: TabCreateEntryArgs): Promise<void> {
         ? {
             workspaceId: args.worktreeId,
             targetGroupId: args.groupId,
-            url: buildSearchUrl(classification.query, classification.engine),
+            url: buildSearchUrl(classification.query, classification.engine, {
+              kagiSessionLink: state.browserKagiSessionLink
+            }),
             intent: { kind: 'search', engine: classification.engine }
           }
         : {
@@ -277,6 +282,7 @@ export async function openTabBarEntry(args: TabCreateEntryArgs): Promise<void> {
     allowAbsolutePaths,
     localPlatform,
     searchEngine,
+    searchUrlOptions: { kagiSessionLink: state.browserKagiSessionLink },
     classification: args.classification,
     operations: {
       createRuntimePath,

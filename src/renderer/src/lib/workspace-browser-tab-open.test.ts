@@ -213,7 +213,7 @@ describe('openWorkspaceBrowserTab', () => {
     expect(createBrowserTab).not.toHaveBeenCalled()
   })
 
-  it('fails closed for invalid targets, unresolved owners, and remote failure', async () => {
+  it('fails closed for invalid targets and unresolved owners, then falls back locally', async () => {
     const secretUrl = 'https://example.com/?q=secret-value'
     mocks.state = {}
     await expect(
@@ -237,17 +237,22 @@ describe('openWorkspaceBrowserTab', () => {
     mocks.state = {
       ...ownerState(toRuntimeExecutionHostId('hub-a')),
       createBrowserTab: vi.fn(),
-      defaultBrowserSessionProfileId: null,
-      defaultBrowserSessionProfileIdByHostId: {}
+      defaultBrowserSessionProfileId: 'focused-profile',
+      defaultBrowserSessionProfileIdByHostId: { local: 'local-profile' }
     }
     mocks.createRemote.mockResolvedValue(false)
-    await expect(
-      openWorkspaceBrowserTab({
-        workspaceId: WORKSPACE_ID,
-        url: secretUrl,
-        intent: { kind: 'search', engine: 'kagi' }
-      })
-    ).rejects.toThrow('Unable to search with Kagi.')
-    expect(mocks.state.createBrowserTab).not.toHaveBeenCalled()
+    await openWorkspaceBrowserTab({
+      workspaceId: WORKSPACE_ID,
+      url: secretUrl,
+      intent: { kind: 'search', engine: 'kagi' }
+    })
+    expect(mocks.state.createBrowserTab).toHaveBeenCalledWith(WORKSPACE_ID, secretUrl, {
+      activate: true,
+      browserRuntimeEnvironmentId: null,
+      focusAddressBar: false,
+      sessionProfileId: 'local-profile',
+      targetGroupId: undefined,
+      title: 'Search Kagi'
+    })
   })
 })

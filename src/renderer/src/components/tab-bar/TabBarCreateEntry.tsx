@@ -63,6 +63,7 @@ export default function TabBarCreateEntry({
   const [pinnedOptionId, setPinnedOptionId] = useState<string | null>(null)
   const [lastMenuOpen, setLastMenuOpen] = useState(menuOpen)
   const inputRef = useRef<HTMLInputElement>(null)
+  const submissionIdRef = useRef(0)
   const fileList = useRuntimeFileListForWorktree({ enabled: menuOpen, worktreeId })
   const rawQueryOversized = isQuickOpenQueryTooLarge(query)
   const forcedSearch = parseForcedSearchQuery(query)
@@ -175,6 +176,7 @@ export default function TabBarCreateEntry({
   if (lastMenuOpen !== menuOpen) {
     setLastMenuOpen(menuOpen)
     if (!menuOpen) {
+      submissionIdRef.current += 1
       setQuery('')
       setPending(false)
       setError(null)
@@ -206,6 +208,7 @@ export default function TabBarCreateEntry({
   ]
   const { activeSelectedIndex, selectedActiveOption } = useNetworkSafeTabEntrySelection({
     activeOptions,
+    fileIndexReady: !fileList.loading && !fileList.loadError,
     forcedSearch: forcedSearch.forced,
     menuOpen,
     pinnedOptionId,
@@ -262,6 +265,7 @@ export default function TabBarCreateEntry({
     }
     setPending(true)
     setError(null)
+    const submissionId = ++submissionIdRef.current
     void onOpenEntry({
       query,
       worktreeId,
@@ -270,13 +274,19 @@ export default function TabBarCreateEntry({
       classification: selectedOption.option.classification
     })
       .then(() => {
-        onDidOpenEntry?.()
+        if (submissionIdRef.current === submissionId) {
+          onDidOpenEntry?.()
+        }
       })
       .catch((caught) => {
-        setError(caught instanceof Error ? caught.message : String(caught))
+        if (submissionIdRef.current === submissionId) {
+          setError(caught instanceof Error ? caught.message : String(caught))
+        }
       })
       .finally(() => {
-        setPending(false)
+        if (submissionIdRef.current === submissionId) {
+          setPending(false)
+        }
       })
   }
 
@@ -338,10 +348,10 @@ export default function TabBarCreateEntry({
             setSwitchError(null)
             setSelectionGuidance(null)
           }}
-          disabled={disabled}
+          disabled={disabled || pending}
           role="combobox"
-          aria-expanded={activeOptions.length > 0}
-          aria-controls={RESULT_LISTBOX_ID}
+          aria-expanded={!error && activeOptions.length > 0}
+          aria-controls={!error && activeOptions.length > 0 ? RESULT_LISTBOX_ID : undefined}
           aria-autocomplete="list"
           aria-activedescendant={
             activeSelectedIndex !== null && !error
@@ -350,6 +360,7 @@ export default function TabBarCreateEntry({
           }
           aria-label={getTabEntryOmniboxPlaceholder()}
           aria-invalid={error ? true : undefined}
+          aria-errormessage={error ? 'tab-create-entry-error' : undefined}
           placeholder={getTabEntryOmniboxPlaceholder()}
           className="h-9 rounded-none border-0 bg-transparent px-0 text-xs font-normal text-foreground shadow-none placeholder:font-normal placeholder:text-muted-foreground focus-visible:border-0 focus-visible:ring-0 aria-invalid:border-0 aria-invalid:ring-0 md:text-xs dark:bg-transparent"
         />
@@ -358,6 +369,11 @@ export default function TabBarCreateEntry({
           the rows the user can still act on. The live region stays mounted so a
           screen reader announces the failure instead of missing the insertion. */}
       <div role="status">
+        {error ? (
+          <div className="mt-1 px-1" id="tab-create-entry-error">
+            <EntryStatusRow message={error} />
+          </div>
+        ) : null}
         {switchError ? (
           <div className="mt-1 px-1">
             <EntryStatusRow message={switchError} />
@@ -374,21 +390,21 @@ export default function TabBarCreateEntry({
           </div>
         ) : null}
       </div>
-      {error || activeOptions.length > 0 || hasQuery ? (
+      {!error && (activeOptions.length > 0 || hasQuery) ? (
         <div
           className="mt-1 space-y-0.5 px-1"
           id={RESULT_LISTBOX_ID}
-          role={activeOptions.length > 0 && !error ? 'listbox' : undefined}
+          role={activeOptions.length > 0 ? 'listbox' : undefined}
         >
-          {error ? (
-            <EntryStatusRow message={error} />
-          ) : activeOptions.length > 0 ? (
+          {activeOptions.length > 0 ? (
             activeOptions.map((option, index) => (
               <EntryActionRow
                 key={getActiveOptionId(option)}
                 id={resultOptionDomId(index)}
                 option={option}
                 selected={index === activeSelectedIndex}
+                disabled={disabled || pending}
+                loading={pending && index === activeSelectedIndex}
                 onClick={() => {
                   setSelectionGuidance(null)
                   submitOption(option)

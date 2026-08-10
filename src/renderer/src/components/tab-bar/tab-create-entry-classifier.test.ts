@@ -70,6 +70,12 @@ describe('tab create entry classification', () => {
     }
   })
 
+  it('blocks malformed bracketed IPv6 URL attempts', () => {
+    for (const input of ['[::1]:abc', '[::1]:99999', '[2001:db8::1]:nope/path']) {
+      expect(classifyTabEntryQuery(input, readyFiles([])), input).toMatchObject({ kind: 'blocked' })
+    }
+  })
+
   it('does not classify invalid numeric hosts as URLs', () => {
     expect(classifyTabEntryQuery('999.999.999.999', readyFiles([]))).toEqual({
       kind: 'new-file',

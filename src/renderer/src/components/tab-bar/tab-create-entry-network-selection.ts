@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useRef } from 'react'
 import { getActiveOptionId, type ActiveOption } from './tab-create-entry-active-option'
 
 type NetworkSelectionArgs = {
   activeOptions: ActiveOption[]
+  fileIndexReady: boolean
   forcedSearch: boolean
   menuOpen: boolean
   pinnedOptionId: string | null
@@ -11,6 +12,7 @@ type NetworkSelectionArgs = {
 
 export function useNetworkSafeTabEntrySelection({
   activeOptions,
+  fileIndexReady,
   forcedSearch,
   menuOpen,
   pinnedOptionId,
@@ -22,28 +24,35 @@ export function useNetworkSafeTabEntrySelection({
   const pinnedOptionIndex = pinnedOptionId
     ? activeOptions.findIndex((option) => getActiveOptionId(option) === pinnedOptionId)
     : -1
-  const [policy, setPolicy] = useState({ allowed: true, menuOpen, query })
-  let ordinarySearchAllowed =
-    policy.menuOpen === menuOpen && policy.query === query ? policy.allowed : true
+  const policyRef = useRef({ allowed: fileIndexReady, fileIndexReady, menuOpen, query })
+  const policy = policyRef.current
+  let networkActionAllowed =
+    policy.fileIndexReady === fileIndexReady &&
+    policy.menuOpen === menuOpen &&
+    policy.query === query
+      ? policy.allowed
+      : fileIndexReady
   const rankedOption = pinnedOptionIndex < 0 ? activeOptions[0] : undefined
-  const rankedOrdinarySearch =
+  const rankedNetworkAction =
     !forcedSearch &&
     rankedOption?.kind === 'entry' &&
-    rankedOption.option.classification.kind === 'search'
-  if (rankedOption && !rankedOrdinarySearch && ordinarySearchAllowed) {
-    ordinarySearchAllowed = false
+    (rankedOption.option.classification.kind === 'search' ||
+      rankedOption.option.classification.kind === 'host-url')
+  if (rankedOption && !rankedNetworkAction && networkActionAllowed) {
+    networkActionAllowed = false
   }
   if (
-    policy.allowed !== ordinarySearchAllowed ||
+    policy.allowed !== networkActionAllowed ||
+    policy.fileIndexReady !== fileIndexReady ||
     policy.menuOpen !== menuOpen ||
     policy.query !== query
   ) {
-    setPolicy({ allowed: ordinarySearchAllowed, menuOpen, query })
+    policyRef.current = { allowed: networkActionAllowed, fileIndexReady, menuOpen, query }
   }
   const activeSelectedIndex =
     pinnedOptionIndex >= 0
       ? pinnedOptionIndex
-      : activeOptions.length === 0 || (rankedOrdinarySearch && !ordinarySearchAllowed)
+      : activeOptions.length === 0 || (rankedNetworkAction && !networkActionAllowed)
         ? null
         : 0
   return {

@@ -559,6 +559,14 @@
           }
         }
       },
+      "browser": {
+        "tab": {
+          "open": {
+            "urlFailed": "No se pudo abrir la URL.",
+            "searchFailed": "No se pudo buscar con {{value0}}."
+          }
+        }
+      },
       "worktree": {
         "palette": {
           "search": {
@@ -2993,7 +3001,9 @@
             "2c38630a01": "El espacio de trabajo ya no existe",
             "4f0d9a71c2": "La pestaña ya no existe",
             "d7d496a451": "La página del navegador ya no existe",
-            "7726ce9970": "La pestaña del emulador móvil ya no existe"
+            "7726ce9970": "La pestaña del emulador móvil ya no existe",
+            "chooseAction": "Elige una acción.",
+            "searchProvider": "Buscar con {{value0}}"
           },
           "TabBarQuickCommandsButton": {
             "a2c7a33831": "Comando",

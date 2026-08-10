@@ -116,14 +116,84 @@ describe('TabBarCreateEntry search behavior', () => {
     )
   })
 
-  it('shows file-index status beside an actionable search', () => {
+  it('requires an explicit choice before searching while the file index is unresolved', () => {
     fileListMock.current = { files: [], loading: true, loadError: null }
-    renderEntry()
+    const onOpenEntry = vi.fn().mockResolvedValue(undefined)
+    renderEntry({ onOpenEntry })
     setQuery('natural language')
 
     expect(container.querySelectorAll('[role="option"]')).toHaveLength(1)
     expect(container.querySelector('[role="option"]')?.textContent).toContain('Search Google')
     expect(container.querySelector('[role="status"]')?.textContent).toContain('Loading files...')
+    expect(container.querySelector('[aria-selected="true"]')).toBeNull()
+
+    submit()
+    expect(onOpenEntry).not.toHaveBeenCalled()
+    expect(container.querySelector('[role="status"]')?.textContent).toContain('Choose an action.')
+
+    press('ArrowDown')
+    submit()
+    expect(onOpenEntry).toHaveBeenCalledOnce()
+  })
+
+  it('does not auto-open a host-like filename while the file index is unresolved', () => {
+    fileListMock.current = { files: [], loading: true, loadError: null }
+    const onOpenEntry = vi.fn().mockResolvedValue(undefined)
+    renderEntry({ onOpenEntry })
+    setQuery('example.com')
+
+    expect(container.querySelector('[role="option"]')?.textContent).toContain('Open URL')
+    expect(container.querySelector('[aria-selected="true"]')).toBeNull()
+    submit()
+    expect(onOpenEntry).not.toHaveBeenCalled()
+  })
+
+  it('disables the active submission and exposes failures to assistive technology', async () => {
+    let rejectOpen: ((error: Error) => void) | undefined
+    const onOpenEntry = vi.fn(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectOpen = reject
+        })
+    )
+    renderEntry({ onOpenEntry })
+    setQuery('react hooks')
+    submit()
+
+    expect(container.querySelector('input')?.disabled).toBe(true)
+    expect(container.querySelector<HTMLButtonElement>('[role="option"]')?.disabled).toBe(true)
+    expect(container.querySelector('[role="option"] .animate-spin')).not.toBeNull()
+
+    await act(async () => rejectOpen?.(new Error('Search failed safely.')))
+
+    const input = container.querySelector('input')!
+    expect(input.disabled).toBe(false)
+    expect(input.getAttribute('aria-expanded')).toBe('false')
+    expect(input.getAttribute('aria-errormessage')).toBe('tab-create-entry-error')
+    expect(container.querySelector('#tab-create-entry-error')?.textContent).toContain(
+      'Search failed safely.'
+    )
+  })
+
+  it('ignores completion from a previous menu session', async () => {
+    let resolveOpen: (() => void) | undefined
+    const onDidOpenEntry = vi.fn()
+    const onOpenEntry = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveOpen = resolve
+        })
+    )
+    renderEntry({ onDidOpenEntry, onOpenEntry })
+    setQuery('react hooks')
+    submit()
+
+    renderEntry({ menuOpen: false, onDidOpenEntry, onOpenEntry })
+    renderEntry({ menuOpen: true, onDidOpenEntry, onOpenEntry })
+    await act(async () => resolveOpen?.())
+
+    expect(onDidOpenEntry).not.toHaveBeenCalled()
+    expect(container.querySelector('input')?.disabled).toBe(false)
   })
 
   it('does not arm ordinary search when a ranked file disappears asynchronously', () => {

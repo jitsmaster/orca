@@ -233,6 +233,27 @@ describe('openTabEntryWithOperations', () => {
     })
   })
 
+  it('uses a configured Kagi private-session link', async () => {
+    const operations = makeOperations()
+
+    await openTabEntryWithOperations({
+      ...baseArgs,
+      query: 'private project',
+      searchEngine: 'kagi',
+      searchUrlOptions: {
+        kagiSessionLink: 'https://kagi.com/search?token=secret'
+      },
+      operations
+    })
+
+    expect(operations.openWorkspaceBrowserTab).toHaveBeenCalledWith({
+      workspaceId: 'wt-1',
+      url: 'https://kagi.com/search?token=secret&q=private+project',
+      targetGroupId: 'group-1',
+      intent: { kind: 'search', engine: 'kagi' }
+    })
+  })
+
   it('authorizes and opens absolute local files in the target group', async () => {
     const operations = makeOperations()
 
