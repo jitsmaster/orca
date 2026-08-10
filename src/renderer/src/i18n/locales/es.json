@@ -11647,8 +11647,6 @@
         "use": {
           "onboarding": {
             "flow": {
-              "dce4bdce5b": "No se pudo abrir la configuración de SSH",
-              "fd74e7558e": "Clon falló",
               "52acfbef51": "No se pudo guardar el progreso"
             }
           }

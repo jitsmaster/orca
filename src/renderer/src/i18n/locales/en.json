@@ -12099,8 +12099,6 @@
         "use": {
           "onboarding": {
             "flow": {
-              "dce4bdce5b": "Could not open SSH settings",
-              "fd74e7558e": "Clone failed",
               "52acfbef51": "Could not save progress"
             }
           }

@@ -11667,8 +11667,6 @@
         "use": {
           "onboarding": {
             "flow": {
-              "dce4bdce5b": "无法打开 SSH 设置",
-              "fd74e7558e": "克隆失败",
               "52acfbef51": "无法保存进度"
             }
           }
