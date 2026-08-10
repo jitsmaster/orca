@@ -11776,10 +11776,6 @@
             "jiraSelectBindFailed": "无法关联此 Jira 议题。请选择匹配的站点或重新连接 Jira，然后重试。",
             "emoji": "Emoji"
           },
-          "ProjectHostSetupCombobox": {
-            "empty": "此项目没有已就绪的主机。",
-            "placeholder": "选择主机"
-          },
           "ProjectCombobox": {
             "empty": "没有匹配搜索的项目。",
             "addProject": "添加新项目",

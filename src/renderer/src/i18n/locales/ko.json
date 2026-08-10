@@ -11756,10 +11756,6 @@
             "jiraSelectBindFailed": "Couldn’t link this Jira issue. Pick the matching site or reconnect Jira, then try again.",
             "emoji": "Emoji"
           },
-          "ProjectHostSetupCombobox": {
-            "empty": "이 프로젝트에 준비된 호스트가 없습니다.",
-            "placeholder": "호스트 선택"
-          },
           "ProjectCombobox": {
             "empty": "검색과 일치하는 프로젝트가 없습니다.",
             "addProject": "새 프로젝트 추가",

@@ -1502,12 +1502,6 @@
   "auto.components.new.workspace.ProjectCombobox.search": {
     "ko": "프로젝트 검색..."
   },
-  "auto.components.new.workspace.ProjectHostSetupCombobox.empty": {
-    "ko": "이 프로젝트에 준비된 호스트가 없습니다."
-  },
-  "auto.components.new.workspace.ProjectHostSetupCombobox.placeholder": {
-    "ko": "호스트 선택"
-  },
   "auto.components.notification.sound.options.0acd3d384e": {
     "ko": "클랙"
   },

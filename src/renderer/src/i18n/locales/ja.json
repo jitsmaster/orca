@@ -11756,10 +11756,6 @@
             "jiraSelectBindFailed": "この Jira Issue をリンクできませんでした。該当するサイトを選択するか Jira に再接続してから、もう一度お試しください。",
             "emoji": "絵文字"
           },
-          "ProjectHostSetupCombobox": {
-            "empty": "このプロジェクトで準備が整ったホストはありません。",
-            "placeholder": "ホストを選択"
-          },
           "ProjectCombobox": {
             "empty": "検索条件に一致するプロジェクトはありません。",
             "addProject": "新規プロジェクトを追加",

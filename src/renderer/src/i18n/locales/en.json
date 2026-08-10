@@ -12228,10 +12228,6 @@
             "jiraSelectBindFailed": "Couldn’t link this Jira issue. Pick the matching site or reconnect Jira, then try again.",
             "emoji": "Emoji"
           },
-          "ProjectHostSetupCombobox": {
-            "empty": "No hosts are ready for this project.",
-            "placeholder": "Choose host"
-          },
           "ProjectCombobox": {
             "empty": "No projects match your search.",
             "addProject": "Add a new project",
