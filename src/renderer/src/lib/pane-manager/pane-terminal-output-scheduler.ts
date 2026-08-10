@@ -50,7 +50,7 @@ type WriteTerminalOutputOptions = {
 
 type QueueChunk = {
   data: string
-  // Why: `data` may be a V8 SlicedString pinning a much larger parent; this is what the queue really holds alive.
+  // Tracks the backing data still reachable through this queue slot.
   retainedChars: number
   foreground: boolean
   forceForegroundRefresh: boolean
@@ -634,9 +634,7 @@ function takeQueuedChunk(entry: QueueEntry, limit: number): QueuedWrite | null {
       data += chunk.data
       remaining -= chunk.data.length
       entry.queuedChars -= chunk.data.length
-      // Why: compaction only splices every 64 chunks, so without this a fully consumed chunk keeps
-      // its (possibly parent-pinning) string and callbacks alive while charging nothing. Nothing
-      // reads below chunkIndex, so the drained slot only has to stay type-shaped.
+      // Clear drained slots before the 64-chunk compaction can release them.
       entry.chunks[entry.chunkIndex] = {
         data: '',
         retainedChars: 0,
@@ -658,7 +656,7 @@ function takeQueuedChunk(entry: QueueEntry, limit: number): QueuedWrite | null {
 
     data += chunk.data.slice(0, remaining)
     const residual = chunk.data.slice(remaining)
-    // Why: the residual is a SlicedString still pinning `retainedChars`; copy it flat once it pins 2x its own length so a drained 2MB chunk stops holding 2MB to serve a 1KB tail. Halving keeps total copying linear in the original chunk.
+    // Geometric flattening bounds retained parents while keeping total copy work linear.
     const flatten = residual.length * 2 <= chunk.retainedChars
     entry.chunks[entry.chunkIndex] = {
       ...chunk,
@@ -738,10 +736,7 @@ function enqueueChunk(
     ackCredit?: () => void
   }
 ): void {
-  // Why copy at the boundary: producers hand us slices and concatenations that pin far more than
-  // they measure - restore-overlap trims and OSC status stripping both do - and the queue holds
-  // this string long after the parent is otherwise dead. Owning our copy is what makes
-  // retainedChars true, and it costs ~0.1ms per 512KB against a ~30MB/s sustained drain.
+  // Own queued data so producer slices cannot pin larger PTY or restore buffers.
   const owned = flattenRetainedSlice(data)
   entry.chunks.push({
     data: owned,
