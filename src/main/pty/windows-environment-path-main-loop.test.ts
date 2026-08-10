@@ -25,13 +25,11 @@ describe('persisted Windows PATH process creation', () => {
     delayedExecFileSync.mockClear()
   })
 
-  it('keeps the main loop responsive when child creation is delayed', async () => {
-    __setWindowsPathRegistryLoaderForTests(() => ({
-      HK: { LM: 1, CU: 2 },
-      getRegistryKey: (root) => ({
-        Path: { type: 1, value: root === 1 ? 'C:\\Machine' : 'C:\\User' }
-      })
-    }))
+  async function measureMainLoopGap<T>(run: () => T): Promise<{
+    callMs: number
+    maxGapMs: number
+    result: T
+  }> {
     let lastTick = performance.now()
     let maxGapMs = 0
     const timer = setInterval(() => {
@@ -42,17 +40,45 @@ describe('persisted Windows PATH process creation', () => {
     await new Promise((resolve) => setTimeout(resolve, 20))
 
     const startedAt = performance.now()
-    const segments = readPersistedWindowsPathSegments({
-      platform: 'win32',
-      env: { SystemRoot: 'C:\\Windows' }
-    })
+    const result = run()
     const callMs = performance.now() - startedAt
     await new Promise((resolve) => setTimeout(resolve, 20))
     clearInterval(timer)
+    return { callMs, maxGapMs, result }
+  }
 
-    expect(segments).toEqual(['C:\\Machine', 'C:\\User'])
+  it('proves delayed process creation blocks while native registry reads do not spawn', async () => {
+    const legacy = await measureMainLoopGap(() =>
+      readPersistedWindowsPathSegments({
+        platform: 'win32',
+        env: { SystemRoot: 'C:\\Windows' },
+        execFileSync: delayedExecFileSync as never
+      })
+    )
+
+    expect(legacy.result).toEqual(['C:\\Delayed', 'C:\\Delayed'])
+    expect(delayedExecFileSync).toHaveBeenCalledTimes(2)
+    expect(legacy.callMs).toBeGreaterThanOrEqual(CREATE_PROCESS_DELAY_MS * 2)
+    expect(legacy.maxGapMs).toBeGreaterThanOrEqual(CREATE_PROCESS_DELAY_MS)
+
+    __resetPersistedWindowsPathCacheForTests()
+    delayedExecFileSync.mockClear()
+    __setWindowsPathRegistryLoaderForTests(() => ({
+      HK: { LM: 1, CU: 2 },
+      getRegistryKey: (root) => ({
+        Path: { type: 1, value: root === 1 ? 'C:\\Machine' : 'C:\\User' }
+      })
+    }))
+    const native = await measureMainLoopGap(() =>
+      readPersistedWindowsPathSegments({
+        platform: 'win32',
+        env: { SystemRoot: 'C:\\Windows' }
+      })
+    )
+
+    expect(native.result).toEqual(['C:\\Machine', 'C:\\User'])
     expect(delayedExecFileSync).not.toHaveBeenCalled()
-    expect(callMs).toBeLessThan(CREATE_PROCESS_DELAY_MS / 2)
-    expect(maxGapMs).toBeLessThan(CREATE_PROCESS_DELAY_MS / 2)
+    expect(native.callMs).toBeLessThan(CREATE_PROCESS_DELAY_MS / 2)
+    expect(native.maxGapMs).toBeLessThan(CREATE_PROCESS_DELAY_MS / 2)
   })
 })
