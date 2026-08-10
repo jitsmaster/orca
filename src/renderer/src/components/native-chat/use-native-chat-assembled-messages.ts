@@ -1,11 +1,28 @@
-import { useMemo, useRef } from 'react'
+import { useLayoutEffect, useMemo, useRef } from 'react'
 import type { AgentType, NativeChatMessage } from '../../../../shared/native-chat-types'
 import {
   applyAppends,
   createIncrementalAssembler,
+  type IncrementalChatAssembler,
   reset as resetAssembler
 } from './native-chat-incremental-assembler'
 import { prepareNativeChatLiveMessages } from './native-chat-live-message-preparation'
+
+type AssemblyCache = {
+  assembler: IncrementalChatAssembler
+  baseSignature: string
+  baseMessages: readonly NativeChatMessage[]
+  transcript: readonly NativeChatMessage[]
+  assembledMessages: NativeChatMessage[]
+}
+
+function cloneAssembler(assembler: IncrementalChatAssembler): IncrementalChatAssembler {
+  return {
+    byId: new Map(assembler.byId),
+    byTurn: new Map(assembler.byTurn),
+    messages: assembler.messages
+  }
+}
 
 function sharesPrefix(
   whole: readonly NativeChatMessage[],
@@ -27,38 +44,43 @@ export function useNativeChatAssembledMessages(args: {
   baseMessages: readonly NativeChatMessage[]
   appended: NativeChatMessage[]
 }): { assembledMessages: NativeChatMessage[]; normalizedMessages: NativeChatMessage[] } {
-  const assemblerRef = useRef(createIncrementalAssembler())
-  const appliedTranscriptRef = useRef<readonly NativeChatMessage[]>([])
-  const baseSignatureRef = useRef<string | null>(null)
-  const baseMessagesRef = useRef<readonly NativeChatMessage[]>([])
+  const committedCacheRef = useRef<AssemblyCache | null>(null)
   const { agent, sessionId, baseMessages, appended } = args
 
-  const assembledMessages = useMemo(() => {
+  const assembly = useMemo<AssemblyCache>(() => {
+    const committed = committedCacheRef.current
     const transcript =
       appended.length > 0 ? [...baseMessages, ...appended] : (baseMessages as NativeChatMessage[])
     const baseSignature = `${agent}\u0000${sessionId ?? ''}`
     const baseChanged =
-      baseSignature !== baseSignatureRef.current || baseMessages !== baseMessagesRef.current
-    const applied = appliedTranscriptRef.current
+      !committed ||
+      baseSignature !== committed.baseSignature ||
+      baseMessages !== committed.baseMessages
+    const applied = committed?.transcript ?? []
     const isSuffixExtension =
       !baseChanged &&
       transcript.length >= applied.length &&
       sharesPrefix(transcript, applied, applied.length)
+    // A discarded render must not mutate the last committed assembler.
+    const assembler = baseChanged
+      ? createIncrementalAssembler()
+      : cloneAssembler(committed.assembler)
 
-    const assembled = isSuffixExtension
+    const assembledMessages = isSuffixExtension
       ? transcript.length > applied.length
-        ? applyAppends(assemblerRef.current, transcript.slice(applied.length))
-        : assemblerRef.current.messages
-      : resetAssembler(assemblerRef.current, transcript)
-    baseSignatureRef.current = baseSignature
-    baseMessagesRef.current = baseMessages
-    appliedTranscriptRef.current = transcript
-    return assembled
+        ? applyAppends(assembler, transcript.slice(applied.length))
+        : assembler.messages
+      : resetAssembler(assembler, transcript)
+    return { assembler, baseSignature, baseMessages, transcript, assembledMessages }
   }, [agent, appended, baseMessages, sessionId])
 
+  useLayoutEffect(() => {
+    committedCacheRef.current = assembly
+  }, [assembly])
+
   const normalizedMessages = useMemo(
-    () => prepareNativeChatLiveMessages(assembledMessages, agent),
-    [agent, assembledMessages]
+    () => prepareNativeChatLiveMessages(assembly.assembledMessages, agent),
+    [agent, assembly.assembledMessages]
   )
-  return { assembledMessages, normalizedMessages }
+  return { assembledMessages: assembly.assembledMessages, normalizedMessages }
 }
