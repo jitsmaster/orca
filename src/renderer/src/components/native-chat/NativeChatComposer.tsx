@@ -4,6 +4,7 @@ import { sendRuntimePtyInput } from '@/runtime/runtime-terminal-inspection'
 import { getSettingsForAgentTabRuntimeOwner } from '@/lib/agent-paste-draft'
 import {
   sendNativeChatMessage,
+  sendNativeChatTypedCommand,
   sendNativeChatMessageWithImageAttachments,
   submitNativeChatPrompt
 } from './native-chat-runtime-send'
@@ -263,7 +264,10 @@ export const NativeChatComposer = forwardRef<NativeChatComposerHandle, NativeCha
       // command/unknown send, otherwise `clearImageAttachments()` below drops
       // them silently when the text starts with the agent's slash/skill prefix.
       if (classification !== 'chat' && imagePaths.length === 0) {
-        pendingHandle = sendNativeChatMessage(target.settings, target.ptyId, text, sendOptions)
+        pendingHandle =
+          agent === 'codex'
+            ? sendNativeChatTypedCommand(target.settings, target.ptyId, text)
+            : sendNativeChatMessage(target.settings, target.ptyId, text, sendOptions)
       } else if (imagePaths.length > 0) {
         pendingHandle = sendNativeChatMessageWithImageAttachments(
           target.settings,
