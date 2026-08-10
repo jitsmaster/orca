@@ -1,8 +1,11 @@
+import { bumpRuntimeClientEventSubscriptionGeneration } from './runtime-client-event-subscription-invalidation'
+
 const revisionByEnvironmentId = new Map<string, number>()
 
 export function replaceRuntimeEnvironmentRevisions(
   environments: readonly { id: string; createdAt: number; pairingRevision?: number }[]
 ): void {
+  bumpRuntimeClientEventSubscriptionGeneration()
   revisionByEnvironmentId.clear()
   for (const environment of environments) {
     revisionByEnvironmentId.set(

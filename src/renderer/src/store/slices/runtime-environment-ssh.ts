@@ -6,6 +6,7 @@ import type {
   SshTargetSummary
 } from '../../../../shared/ssh-types'
 import { sshConnectionStatesEqual, sshTargetLabelsEqual } from './ssh-target-cleanup'
+import { bumpRuntimeClientEventSubscriptionGeneration } from '@/runtime/runtime-client-event-subscription-invalidation'
 
 /**
  * SSH state of one remote Orca server's own SSH targets, mirrored on this
@@ -100,6 +101,7 @@ function advanceEnvironmentSshStateGeneration(environmentId: string): void {
     environmentId,
     getEnvironmentSshStateGeneration(environmentId) + 1
   )
+  bumpRuntimeClientEventSubscriptionGeneration()
 }
 
 function generationIsCurrent(environmentId: string, generation: number | undefined): boolean {

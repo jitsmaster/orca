@@ -11,6 +11,7 @@ import {
 import { replaceRuntimeEnvironmentRevisions } from '@/runtime/runtime-environment-revision'
 import { translate } from '@/i18n/i18n'
 import { bumpProviderRuntimeSessionGeneration } from '@/lib/provider-runtime-context'
+import { bumpRuntimeClientEventSubscriptionGeneration } from '@/runtime/runtime-client-event-subscription-invalidation'
 
 /** Live status for one saved runtime environment, as last observed by the
  * renderer. `status === null` records a probe that failed or timed out so the
@@ -67,9 +68,8 @@ const connectionGenerationByEnvironment = new Map<string, number>()
 const activeRuntimeDisconnectedToasts = new Map<string, symbol>()
 const RUNTIME_DISCONNECTED_TOAST_DURATION_MS = 4_000
 
-function getRuntimeDisconnectedToastId(environmentId: string): string {
-  return `runtime-environment-disconnected:${environmentId}`
-}
+const getRuntimeDisconnectedToastId = (environmentId: string): string =>
+  `runtime-environment-disconnected:${environmentId}`
 
 function showRuntimeDisconnectedToast(environmentId: string, getState: () => AppState): void {
   const environment = getState().runtimeEnvironments.find((entry) => entry.id === environmentId)
@@ -138,10 +138,9 @@ function showRuntimeDisconnectedToast(environmentId: string, getState: () => App
 
 function dismissRuntimeDisconnectedToast(environmentId: string): void {
   const toastId = getRuntimeDisconnectedToastId(environmentId)
-  if (!activeRuntimeDisconnectedToasts.delete(toastId)) {
-    return
+  if (activeRuntimeDisconnectedToasts.delete(toastId)) {
+    toast.dismiss?.(toastId)
   }
-  toast.dismiss?.(toastId)
 }
 
 export function getRuntimeEnvironmentConnectionGeneration(environmentId: string): number {
@@ -154,6 +153,7 @@ export const clearRuntimeEnvironmentConnectionGenerationsForTests = (): void =>
 function advanceRuntimeEnvironmentConnectionGeneration(environmentId: string): number {
   const next = getRuntimeEnvironmentConnectionGeneration(environmentId) + 1
   connectionGenerationByEnvironment.set(environmentId, next)
+  bumpRuntimeClientEventSubscriptionGeneration()
   return next
 }
 
