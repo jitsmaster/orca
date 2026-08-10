@@ -2604,15 +2604,6 @@
         },
         "sheet": {
           "1189e9fe0a": "Cerrar"
-        },
-        "team": {
-          "multi": {
-            "combobox": {
-              "de83523bf9": "Ningún equipo coincide con tu búsqueda.",
-              "301f2a796e": "Todos los equipos",
-              "18ec58881e": "Buscar equipos..."
-            }
-          }
         }
       },
       "terminal": {

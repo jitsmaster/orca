@@ -2709,15 +2709,6 @@
         },
         "sheet": {
           "1189e9fe0a": "Close"
-        },
-        "team": {
-          "multi": {
-            "combobox": {
-              "de83523bf9": "No teams match your search.",
-              "301f2a796e": "All teams",
-              "18ec58881e": "Search teams..."
-            }
-          }
         }
       },
       "terminal": {
