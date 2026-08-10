@@ -19,7 +19,14 @@ function hasFilenameExtension(query: string): boolean {
 }
 
 export function isLikelyNewFileIntent(query: string): boolean {
-  return hasPathSeparator(query) || hasFilenameExtension(query)
+  const trimmed = query.trim()
+  if (hasPathSeparator(trimmed)) {
+    return true
+  }
+  if (/\s/.test(trimmed)) {
+    return false
+  }
+  return hasFilenameExtension(trimmed) || /^\.[^.].*$/.test(trimmed)
 }
 
 function dedupeMatches(matches: ExistingFileMatch[]): ExistingFileMatch[] {

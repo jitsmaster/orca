@@ -3,6 +3,7 @@ import { ORCA_BROWSER_BLANK_URL } from './constants'
 import {
   buildSearchUrl,
   classifySchemeLessLocalDevAddress,
+  encodeSearchQueryComponent,
   isEligibleLocalCertificateHost,
   normalizeKagiSessionLink,
   normalizeBrowserNavigationUrl,
@@ -220,6 +221,20 @@ describe('browser-url helpers', () => {
       'https://duckduckgo.com/?q=hello%20world'
     )
     expect(buildSearchUrl('hello world', 'kagi')).toBe('https://kagi.com/search?q=hello%20world')
+  })
+
+  it('encodes Unicode, reserved characters, and emoji for every search engine', () => {
+    const query = 'snow 雪 &?# 😀'
+    const encoded = 'snow%20%E9%9B%AA%20%26%3F%23%20%F0%9F%98%80'
+    for (const engine of ['google', 'duckduckgo', 'bing', 'kagi'] as const) {
+      expect(buildSearchUrl(query, engine)).toContain(encoded)
+    }
+  })
+
+  it('replaces unmatched surrogates without changing valid pairs', () => {
+    expect(encodeSearchQueryComponent('\ud800a\udc00😀')).toBe('%EF%BF%BDa%EF%BF%BD%F0%9F%98%80')
+    expect(() => buildSearchUrl('\ud800', 'google')).not.toThrow()
+    expect(buildSearchUrl('\ud800', 'google')).toBe('https://www.google.com/search?q=%EF%BF%BD')
   })
 
   it('uses a Kagi private session link when configured', () => {

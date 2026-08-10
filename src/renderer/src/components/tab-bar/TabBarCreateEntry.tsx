@@ -4,17 +4,10 @@ import { useRuntimeFileListForWorktree } from '../quick-open-file-list'
 import {
   createTabEntryAllowAbsolutePathsSelector,
   getTabEntryOptions,
-  isTabEntryAbsolutePathLike,
-  type TabCreateEntryArgs
+  isTabEntryAbsolutePathLike
 } from './tab-create-entry-action'
-import {
-  findMatchingTabAgentLaunchOptions,
-  type TabAgentLaunchOption
-} from './tab-agent-launch-options'
-import {
-  findMatchingTabCreateMenuOptions,
-  type TabCreateMenuOption
-} from './tab-create-menu-options'
+import { findMatchingTabAgentLaunchOptions } from './tab-agent-launch-options'
+import { findMatchingTabCreateMenuOptions } from './tab-create-menu-options'
 import {
   getActiveOptionId,
   isActiveEntryOption,
@@ -28,40 +21,24 @@ import {
 } from './TabBarCreateEntryRow'
 import { dropFileEntriesCoveredByTabResults } from './open-tab-entry-dedupe'
 import { activateOpenTabSearchResult } from './open-tab-selection-routing'
-import type { OpenTabSearchResult } from './open-tab-search'
 import { useOpenTabSearch } from './use-open-tab-search'
-import type { TuiAgent } from '../../../../shared/types'
-import { translate } from '@/i18n/i18n'
+import { DEFAULT_SEARCH_ENGINE } from '../../../../shared/browser-url'
 import { getRendererAppPlatform } from '@/lib/renderer-app-platform'
 import { useAppStore } from '@/store'
-
-// Leads with tabs: the omnibox now jumps to open tabs before it creates anything.
-function omniboxPlaceholder(): string {
-  return translate(
-    'auto.components.tab.bar.TabBarCreateEntry.0e5b7a3f16',
-    'Search open tabs, files, URLs, agents…'
-  )
-}
-
-const EMPTY_AGENT_OPTIONS: readonly TabAgentLaunchOption[] = []
-const EMPTY_MENU_OPTIONS: readonly TabCreateMenuOption[] = []
-const EMPTY_TAB_RESULTS: readonly OpenTabSearchResult[] = []
-
-type TabBarCreateEntryProps = {
-  agentOptions?: readonly TabAgentLaunchOption[]
-  groupId: string
-  menuOpen: boolean
-  menuOptions?: readonly TabCreateMenuOption[]
-  onDidOpenEntry?: () => void
-  onLaunchAgent?: (agent: TuiAgent) => void
-  onOpenDefaultTerminal?: () => void
-  onOpenEntry?: (args: TabCreateEntryArgs) => Promise<void>
-  onQueryChange?: (query: string) => void
-  /** Runs after the menu closes, so the tab jumped to actually takes focus. */
-  onQueueSwitchFocus?: (focus: () => void) => void
-  onSelectMenuOption?: (option: TabCreateMenuOption) => void
-  worktreeId: string
-}
+import { isQuickOpenQueryTooLarge } from '../quick-open-search'
+import { parseForcedSearchQuery } from './tab-create-entry-forced-search'
+import { useNetworkSafeTabEntrySelection } from './tab-create-entry-network-selection'
+import { focusTabEntryMenuItemAtEdge } from './tab-create-entry-keyboard-focus'
+import {
+  getTabEntryChooseActionMessage,
+  getTabEntryOmniboxPlaceholder
+} from './tab-create-entry-copy'
+import {
+  EMPTY_AGENT_OPTIONS,
+  EMPTY_MENU_OPTIONS,
+  EMPTY_TAB_RESULTS
+} from './tab-create-entry-empty-options'
+import type { TabBarCreateEntryProps } from './tab-create-entry-props'
 
 export default function TabBarCreateEntry({
   agentOptions = EMPTY_AGENT_OPTIONS,
@@ -81,16 +58,27 @@ export default function TabBarCreateEntry({
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [switchError, setSwitchError] = useState<string | null>(null)
+  const [selectionGuidance, setSelectionGuidance] = useState<string | null>(null)
   // null = follow ranking (deferred tabs can prepend); set on arrow keys only.
   const [pinnedOptionId, setPinnedOptionId] = useState<string | null>(null)
   const [lastMenuOpen, setLastMenuOpen] = useState(menuOpen)
   const inputRef = useRef<HTMLInputElement>(null)
   const fileList = useRuntimeFileListForWorktree({ enabled: menuOpen, worktreeId })
-  const tabSearch = useOpenTabSearch({ enabled: menuOpen, query, worktreeId })
+  const rawQueryOversized = isQuickOpenQueryTooLarge(query)
+  const forcedSearch = parseForcedSearchQuery(query)
+  const terminalQueryMode = rawQueryOversized || forcedSearch.forced
+  const tabSearchQuery = terminalQueryMode ? '' : query
+  const tabSearch = useOpenTabSearch({
+    enabled: menuOpen && !terminalQueryMode,
+    query: tabSearchQuery,
+    worktreeId
+  })
   // Why gate on the query: the search defers, so its rows can still describe an
   // earlier query — Enter must never submit a tab the current query never matched.
-  const tabResults = tabSearch.query === query ? tabSearch.results : EMPTY_TAB_RESULTS
-  const shouldResolveAbsolutePaths = menuOpen && isTabEntryAbsolutePathLike(query.trim())
+  const tabResults =
+    !terminalQueryMode && tabSearch.query === query ? tabSearch.results : EMPTY_TAB_RESULTS
+  const shouldResolveAbsolutePaths =
+    menuOpen && !terminalQueryMode && isTabEntryAbsolutePathLike(query.trim())
   const allowAbsolutePathsSelector = useMemo(
     () =>
       createTabEntryAllowAbsolutePathsSelector(worktreeId, {
@@ -105,6 +93,9 @@ export default function TabBarCreateEntry({
     menuOpen ? (state.getKnownWorktreeById(worktreeId)?.path ?? null) : null
   )
   const localPlatform = getRendererAppPlatform() === 'win32' ? 'windows' : 'posix'
+  const searchEngine = useAppStore(
+    (state) => state.browserDefaultSearchEngine ?? DEFAULT_SEARCH_ENGINE
+  )
 
   // Why: once ArrowDown moves focus into the static menu list, ArrowUp on the
   // first item should return to the search box so the keyboard trip isn't
@@ -144,14 +135,16 @@ export default function TabBarCreateEntry({
   }, [menuOpen])
 
   const matchingMenuOptions = useMemo(
-    () => findMatchingTabCreateMenuOptions(query, menuOptions),
-    [menuOptions, query]
+    () =>
+      terminalQueryMode ? EMPTY_MENU_OPTIONS : findMatchingTabCreateMenuOptions(query, menuOptions),
+    [menuOptions, query, terminalQueryMode]
   )
   const options = useMemo(() => {
     const entryOptions = dropFileEntriesCoveredByTabResults(
       getTabEntryOptions(query, fileList, 4, {
         allowAbsolutePaths,
-        localPlatform
+        localPlatform,
+        searchEngine
       }),
       tabResults,
       worktreePath
@@ -167,12 +160,16 @@ export default function TabBarCreateEntry({
     localPlatform,
     matchingMenuOptions.length,
     query,
+    searchEngine,
     tabResults,
     worktreePath
   ])
   const matchingAgentOptions = useMemo(
-    () => findMatchingTabAgentLaunchOptions(query, agentOptions),
-    [agentOptions, query]
+    () =>
+      terminalQueryMode
+        ? EMPTY_AGENT_OPTIONS
+        : findMatchingTabAgentLaunchOptions(query, agentOptions),
+    [agentOptions, query, terminalQueryMode]
   )
 
   if (lastMenuOpen !== menuOpen) {
@@ -182,6 +179,7 @@ export default function TabBarCreateEntry({
       setPending(false)
       setError(null)
       setSwitchError(null)
+      setSelectionGuidance(null)
       setPinnedOptionId(null)
     }
   }
@@ -206,13 +204,13 @@ export default function TabBarCreateEntry({
       option
     }))
   ]
-  // Why pin by id (not index): deferred tab rows prepend and would steal a
-  // user-moved highlight if we kept a raw index. Null pin follows top rank.
-  const pinnedOptionIndex = pinnedOptionId
-    ? activeOptions.findIndex((option) => getActiveOptionId(option) === pinnedOptionId)
-    : -1
-  const activeSelectedIndex = Math.max(pinnedOptionIndex, 0)
-  const selectedActiveOption = activeOptions[activeSelectedIndex]
+  const { activeSelectedIndex, selectedActiveOption } = useNetworkSafeTabEntrySelection({
+    activeOptions,
+    forcedSearch: forcedSearch.forced,
+    menuOpen,
+    pinnedOptionId,
+    query
+  })
   const statusOption = options.find(
     (option) => option.classification.kind === 'empty' || option.classification.kind === 'blocked'
   )
@@ -220,7 +218,7 @@ export default function TabBarCreateEntry({
     statusOption != null &&
     (statusOption.classification.kind === 'empty' || statusOption.classification.kind === 'blocked')
       ? statusOption.classification.message
-      : omniboxPlaceholder()
+      : getTabEntryOmniboxPlaceholder()
 
   const submitOption = (option?: ActiveOption) => {
     if (disabled || pending) {
@@ -231,6 +229,10 @@ export default function TabBarCreateEntry({
       if (!hasQuery && onOpenDefaultTerminal) {
         onOpenDefaultTerminal()
         onDidOpenEntry?.()
+        return
+      }
+      if (activeOptions.length > 0) {
+        setSelectionGuidance(getTabEntryChooseActionMessage())
         return
       }
       setError(statusMessage)
@@ -292,15 +294,23 @@ export default function TabBarCreateEntry({
             event.stopPropagation()
             const delta = event.key === 'ArrowDown' ? 1 : -1
             const nextIndex =
-              (activeSelectedIndex + delta + activeOptions.length) % activeOptions.length
+              activeSelectedIndex === null
+                ? event.key === 'ArrowDown'
+                  ? 0
+                  : activeOptions.length - 1
+                : (activeSelectedIndex + delta + activeOptions.length) % activeOptions.length
             setPinnedOptionId(getActiveOptionId(activeOptions[nextIndex]))
+            setSelectionGuidance(null)
             return
           }
           // Why: with no result rows the static create/agent items render below;
           // move focus into that Radix menu list so it stays keyboard-navigable
           // from the search box instead of trapping focus in the input.
           if (
-            focusMenuItemAtEdge(event.currentTarget, event.key === 'ArrowDown' ? 'first' : 'last')
+            focusTabEntryMenuItemAtEdge(
+              event.currentTarget,
+              event.key === 'ArrowDown' ? 'first' : 'last'
+            )
           ) {
             event.preventDefault()
             event.stopPropagation()
@@ -326,6 +336,7 @@ export default function TabBarCreateEntry({
             setPinnedOptionId(null)
             setError(null)
             setSwitchError(null)
+            setSelectionGuidance(null)
           }}
           disabled={disabled}
           role="combobox"
@@ -333,11 +344,13 @@ export default function TabBarCreateEntry({
           aria-controls={RESULT_LISTBOX_ID}
           aria-autocomplete="list"
           aria-activedescendant={
-            activeOptions.length > 0 && !error ? resultOptionDomId(activeSelectedIndex) : undefined
+            activeSelectedIndex !== null && !error
+              ? resultOptionDomId(activeSelectedIndex)
+              : undefined
           }
-          aria-label={omniboxPlaceholder()}
+          aria-label={getTabEntryOmniboxPlaceholder()}
           aria-invalid={error ? true : undefined}
-          placeholder={omniboxPlaceholder()}
+          placeholder={getTabEntryOmniboxPlaceholder()}
           className="h-9 rounded-none border-0 bg-transparent px-0 text-xs font-normal text-foreground shadow-none placeholder:font-normal placeholder:text-muted-foreground focus-visible:border-0 focus-visible:ring-0 aria-invalid:border-0 aria-invalid:ring-0 md:text-xs dark:bg-transparent"
         />
       </div>
@@ -348,6 +361,16 @@ export default function TabBarCreateEntry({
         {switchError ? (
           <div className="mt-1 px-1">
             <EntryStatusRow message={switchError} />
+          </div>
+        ) : null}
+        {selectionGuidance ? (
+          <div className="mt-1 px-1">
+            <EntryStatusRow message={selectionGuidance} />
+          </div>
+        ) : null}
+        {activeOptions.length > 0 && statusOption ? (
+          <div className="mt-1 px-1">
+            <EntryStatusRow loading={fileList.loading} message={statusMessage} />
           </div>
         ) : null}
       </div>
@@ -366,7 +389,10 @@ export default function TabBarCreateEntry({
                 id={resultOptionDomId(index)}
                 option={option}
                 selected={index === activeSelectedIndex}
-                onClick={() => submitOption(option)}
+                onClick={() => {
+                  setSelectionGuidance(null)
+                  submitOption(option)
+                }}
               />
             ))
           ) : (
@@ -376,22 +402,4 @@ export default function TabBarCreateEntry({
       ) : null}
     </form>
   )
-}
-
-// Moves keyboard focus to the first/last enabled item of the enclosing Radix
-// menu so the static create/agent list stays navigable from the search input.
-function focusMenuItemAtEdge(fromElement: HTMLElement, edge: 'first' | 'last'): boolean {
-  const menu = fromElement.closest('[role="menu"]')
-  if (!menu) {
-    return false
-  }
-  const items = menu.querySelectorAll<HTMLElement>(
-    '[role="menuitem"]:not([data-disabled]):not([aria-disabled="true"])'
-  )
-  const target = edge === 'first' ? items[0] : items.item(items.length - 1)
-  if (!target) {
-    return false
-  }
-  target.focus()
-  return true
 }

@@ -92,13 +92,10 @@ describe('tab create entry classification', () => {
     })
   })
 
-  it('blocks non-explicit URLs and file paths while list state is not ready', () => {
+  it('keeps safe URL actions available while the file list is not ready', () => {
     expect(
       classifyTabEntryQuery('example.com', { files: [], loading: true, loadError: null })
-    ).toEqual({
-      kind: 'blocked',
-      message: 'Loading files...'
-    })
+    ).toMatchObject({ kind: 'host-url', url: 'https://example.com/' })
     expect(
       classifyTabEntryQuery('https://example.com', { files: [], loading: true, loadError: null })
     ).toMatchObject({ kind: 'explicit-url' })
@@ -108,7 +105,7 @@ describe('tab create entry classification', () => {
         loading: false,
         loadError: 'scan failed'
       })
-    ).toEqual({ kind: 'blocked', message: 'scan failed' })
+    ).toMatchObject({ kind: 'host-url', url: 'https://example.com/' })
   })
 
   it('matches exact relative path before basename and fuzzy results', () => {
@@ -124,9 +121,9 @@ describe('tab create entry classification', () => {
       relativePath: 'src/components/Button.tsx'
     })
     expect(classifyTabEntryQuery('btn', files)).toEqual({
-      kind: 'existing-file',
-      matchKind: 'fuzzy',
-      relativePath: 'src/components/Button.tsx'
+      kind: 'search',
+      engine: 'google',
+      query: 'btn'
     })
   })
 
@@ -137,7 +134,8 @@ describe('tab create entry classification', () => {
       )
     ).toEqual([
       { kind: 'existing-file', matchKind: 'exact-basename', relativePath: 'src/index.ts' },
-      { kind: 'existing-file', matchKind: 'exact-basename', relativePath: 'docs/index.ts' }
+      { kind: 'existing-file', matchKind: 'exact-basename', relativePath: 'docs/index.ts' },
+      { kind: 'search', engine: 'google', query: 'index.ts' }
     ])
   })
 
@@ -148,8 +146,132 @@ describe('tab create entry classification', () => {
       )
     ).toEqual([
       { kind: 'new-file', relativePath: 'read.md' },
+      { kind: 'search', engine: 'google', query: 'read.md' },
       { kind: 'existing-file', matchKind: 'fuzzy', relativePath: 'README.md' }
     ])
+  })
+
+  it('ranks search before fuzzy files and ordinary create-file actions', () => {
+    expect(
+      getTabEntryOptions('typescript', readyFiles(['docs/typescript-guide.md'])).map(
+        (option) => option.classification
+      )
+    ).toEqual([
+      { kind: 'search', engine: 'google', query: 'typescript' },
+      {
+        kind: 'existing-file',
+        matchKind: 'fuzzy',
+        relativePath: 'docs/typescript-guide.md'
+      },
+      { kind: 'new-file', relativePath: 'typescript' }
+    ])
+  })
+
+  it('keeps strong file syntax ahead of search without treating dotted phrases as files', () => {
+    expect(
+      getTabEntryOptions('README.md', readyFiles(['docs/README-old.md'])).map(
+        (option) => option.classification.kind
+      )
+    ).toEqual(['new-file', 'search', 'existing-file'])
+    for (const query of ['node.js tutorial', 'package.json docs', 'what is foo.bar']) {
+      expect(classifyTabEntryQuery(query, readyFiles([]))).toMatchObject({
+        kind: 'search',
+        query
+      })
+    }
+    for (const query of ['.env', '.gitignore']) {
+      expect(
+        getTabEntryOptions(query, readyFiles([])).map((option) => option.classification.kind)
+      ).toEqual(['new-file', 'search'])
+    }
+  })
+
+  it('searches natural-language colons while blocking explicit unsupported schemes', () => {
+    for (const query of ['error: cannot connect', 'node:fs docs', 'site:github.com react']) {
+      expect(classifyTabEntryQuery(query, readyFiles([]))).toMatchObject({ kind: 'search', query })
+    }
+    for (const query of ['ftp:example.com', 'ftp://example.com', 'custom:// bad input']) {
+      expect(classifyTabEntryQuery(query, readyFiles([]))).toMatchObject({ kind: 'blocked' })
+    }
+    expect(classifyTabEntryQuery('foo.ts:123', readyFiles([]))).toMatchObject({
+      kind: 'new-file',
+      relativePath: 'foo.ts:123'
+    })
+  })
+
+  it('blocks malformed explicit and host-like URLs unless an exact file exists', () => {
+    for (const query of ['https://', 'example.com:', 'example.com:nope', 'example.com:99999']) {
+      expect(classifyTabEntryQuery(query, readyFiles([]))).toMatchObject({ kind: 'blocked' })
+    }
+    expect(classifyTabEntryQuery('example.com:99999', readyFiles(['example.com:99999']))).toEqual({
+      kind: 'existing-file',
+      matchKind: 'exact-path',
+      relativePath: 'example.com:99999'
+    })
+  })
+
+  it('offers network actions alongside file-index status only when safe', () => {
+    const loading = { files: [], loading: true, loadError: null }
+    expect(
+      getTabEntryOptions('natural language', loading).map((option) => option.classification.kind)
+    ).toEqual(['search', 'blocked'])
+    expect(
+      getTabEntryOptions('example.com', loading).map((option) => option.classification.kind)
+    ).toEqual(['host-url', 'blocked'])
+    expect(
+      getTabEntryOptions('README.md', loading).map((option) => option.classification.kind)
+    ).toEqual(['blocked'])
+    expect(
+      getTabEntryOptions('example.com:99999', loading).map((option) => option.classification.kind)
+    ).toEqual(['blocked'])
+  })
+
+  it('never turns invalid paths into search actions', () => {
+    for (const query of ['../.env', 'foo//bar', 'foo/', 'C:relative.txt', 'src/\u0000file.ts']) {
+      expect(classifyTabEntryQuery(query, readyFiles([])), query).toMatchObject({ kind: 'blocked' })
+      expect(
+        classifyTabEntryQuery(query, { files: [], loading: true, loadError: null }),
+        query
+      ).toMatchObject({ kind: 'blocked' })
+    }
+  })
+
+  it('applies the action limit once and leaves index status outside it', () => {
+    expect(getTabEntryOptions('query', readyFiles([]), 0)).toEqual([])
+    expect(
+      getTabEntryOptions('query', { files: [], loading: true, loadError: null }, 0).map(
+        (option) => option.id
+      )
+    ).toEqual(['loading'])
+    expect(
+      getTabEntryOptions('query', readyFiles(['query.md']), 1).map(
+        (option) => option.classification.kind
+      )
+    ).toEqual(['search'])
+  })
+
+  it('forces search before URL, path, and file classification', () => {
+    for (const [input, expectedQuery] of [
+      ['?react hooks', 'react hooks'],
+      ['??foo', '?foo'],
+      ['?https://example.com', 'https://example.com'],
+      ['?/tmp/file.ts', '/tmp/file.ts']
+    ]) {
+      expect(classifyTabEntryQuery(input, readyFiles(['/tmp/file.ts']))).toEqual({
+        kind: 'search',
+        engine: 'google',
+        query: expectedQuery
+      })
+    }
+    expect(classifyTabEntryQuery('?', readyFiles([]))).toMatchObject({ kind: 'empty' })
+  })
+
+  it('retains the configured engine without building a URL', () => {
+    expect(classifyTabEntryQuery('search me', readyFiles([]), { searchEngine: 'kagi' })).toEqual({
+      kind: 'search',
+      engine: 'kagi',
+      query: 'search me'
+    })
   })
 
   it('blocks oversized pasted file-entry queries before reading listed files', () => {

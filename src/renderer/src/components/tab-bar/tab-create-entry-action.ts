@@ -6,14 +6,15 @@ import {
   statRuntimePath,
   type RuntimeFileOperationArgs
 } from '@/runtime/runtime-file-client'
-import {
-  createWebRuntimeSessionBrowserTab,
-  isWebRuntimeSessionActive
-} from '@/runtime/web-runtime-session'
 import { useAppStore } from '@/store'
 import type { OpenFile } from '@/store/slices/editor'
-import type { BrowserTab as BrowserTabState } from '../../../../shared/types'
+import {
+  buildSearchUrl,
+  DEFAULT_SEARCH_ENGINE,
+  type SearchEngine
+} from '../../../../shared/browser-url'
 import type { RuntimeFileListState } from '../quick-open-file-list'
+import { openWorkspaceBrowserTab } from '@/lib/workspace-browser-tab-open'
 import {
   classifyTabEntryQuery,
   TAB_ENTRY_ABSOLUTE_PATH_REMOTE_BLOCKED_MESSAGE,
@@ -54,19 +55,8 @@ export type TabCreateEntryArgs = {
 }
 
 export type TabEntryOperations = {
-  createBrowserTab: (
-    worktreeId: string,
-    url: string,
-    options?: {
-      activate?: boolean
-      browserRuntimeEnvironmentId?: string | null
-      targetGroupId?: string
-      title?: string
-    }
-  ) => BrowserTabState
   createRuntimePath: typeof createRuntimePath
-  createWebRuntimeSessionBrowserTab: typeof createWebRuntimeSessionBrowserTab
-  isWebRuntimeSessionActive: typeof isWebRuntimeSessionActive
+  openWorkspaceBrowserTab: typeof openWorkspaceBrowserTab
   openFile: (
     file: Omit<OpenFile, 'id' | 'isDirty'>,
     options?: { preview?: boolean; targetGroupId?: string }
@@ -83,9 +73,9 @@ type OpenTabEntryWithOperationsArgs = {
   groupId: string
   worktreePath: string
   runtimeContext: RuntimeFileOperationArgs
-  activeRuntimeEnvironmentId: string | null
   allowAbsolutePaths: boolean
   localPlatform: TabEntryLocalPlatform
+  searchEngine: SearchEngine
   classification?: TabEntryActionClassification
   operations: TabEntryOperations
 }
@@ -153,7 +143,6 @@ async function openExistingFile(args: {
 }
 
 export async function openTabEntryWithOperations({
-  activeRuntimeEnvironmentId,
   allowAbsolutePaths,
   classification: selectedClassification,
   fileList,
@@ -162,10 +151,11 @@ export async function openTabEntryWithOperations({
   operations,
   query,
   runtimeContext,
+  searchEngine,
   worktreeId,
   worktreePath
 }: OpenTabEntryWithOperationsArgs): Promise<void> {
-  const entryContext: TabEntryOptionsContext = { allowAbsolutePaths, localPlatform }
+  const entryContext: TabEntryOptionsContext = { allowAbsolutePaths, localPlatform, searchEngine }
   const classification =
     selectedClassification ?? classifyTabEntryQuery(query, fileList, entryContext)
   if (classification.kind === 'empty' || classification.kind === 'blocked') {
@@ -173,32 +163,22 @@ export async function openTabEntryWithOperations({
   }
 
   if (classification.kind === 'explicit-url' || classification.kind === 'host-url') {
-    const runtimeSessionActive = operations.isWebRuntimeSessionActive(activeRuntimeEnvironmentId)
-    if (runtimeSessionActive) {
-      const created = await operations.createWebRuntimeSessionBrowserTab({
-        worktreeId,
-        environmentId: activeRuntimeEnvironmentId,
-        url: classification.url,
-        targetGroupId: groupId
-      })
-      if (created) {
-        return
-      }
-      // Why: headless remote runtimes cannot host browser panes yet; a URL open
-      // should still give the user a usable client-local browser tab.
-      operations.createBrowserTab(worktreeId, classification.url, {
-        activate: true,
-        browserRuntimeEnvironmentId: null,
-        targetGroupId: groupId,
-        title: classification.url
-      })
-    } else {
-      operations.createBrowserTab(worktreeId, classification.url, {
-        activate: true,
-        targetGroupId: groupId,
-        title: classification.url
-      })
-    }
+    await operations.openWorkspaceBrowserTab({
+      workspaceId: worktreeId,
+      targetGroupId: groupId,
+      url: classification.url,
+      intent: { kind: 'url' }
+    })
+    return
+  }
+
+  if (classification.kind === 'search') {
+    await operations.openWorkspaceBrowserTab({
+      workspaceId: worktreeId,
+      targetGroupId: groupId,
+      url: buildSearchUrl(classification.query, classification.engine),
+      intent: { kind: 'search', engine: classification.engine }
+    })
     return
   }
 
@@ -256,6 +236,30 @@ export async function openTabEntryWithOperations({
 
 export async function openTabBarEntry(args: TabCreateEntryArgs): Promise<void> {
   const state = useAppStore.getState()
+  if (
+    args.classification?.kind === 'explicit-url' ||
+    args.classification?.kind === 'host-url' ||
+    args.classification?.kind === 'search'
+  ) {
+    const classification = args.classification
+    await openWorkspaceBrowserTab(
+      classification.kind === 'search'
+        ? {
+            workspaceId: args.worktreeId,
+            targetGroupId: args.groupId,
+            url: buildSearchUrl(classification.query, classification.engine),
+            intent: { kind: 'search', engine: classification.engine }
+          }
+        : {
+            workspaceId: args.worktreeId,
+            targetGroupId: args.groupId,
+            url: classification.url,
+            intent: { kind: 'url' }
+          }
+    )
+    return
+  }
+  const searchEngine = state.browserDefaultSearchEngine ?? DEFAULT_SEARCH_ENGINE
   const worktree = state.getKnownWorktreeById(args.worktreeId)
   if (!worktree) {
     throw new Error('No active worktree.')
@@ -270,15 +274,13 @@ export async function openTabBarEntry(args: TabCreateEntryArgs): Promise<void> {
     groupId: args.groupId,
     worktreePath: worktree.path,
     runtimeContext,
-    activeRuntimeEnvironmentId: runtimeContext.settings?.activeRuntimeEnvironmentId?.trim() ?? null,
     allowAbsolutePaths,
     localPlatform,
+    searchEngine,
     classification: args.classification,
     operations: {
-      createBrowserTab: state.createBrowserTab,
       createRuntimePath,
-      createWebRuntimeSessionBrowserTab,
-      isWebRuntimeSessionActive,
+      openWorkspaceBrowserTab,
       openFile: state.openFile,
       statRuntimePath,
       authorizeExternalPath: window.api.fs.authorizeExternalPath,

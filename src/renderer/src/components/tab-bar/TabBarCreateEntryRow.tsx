@@ -5,6 +5,7 @@ import {
   GitCompare,
   Globe,
   Loader2,
+  Search,
   Smartphone,
   TerminalSquare
 } from 'lucide-react'
@@ -12,6 +13,7 @@ import { AgentIcon } from '@/lib/agent-catalog'
 import { cn } from '@/lib/utils'
 import { FilePathCursorTooltip, splitTrailingSegment } from '@/components/file-path-cursor-tooltip'
 import { translate } from '@/i18n/i18n'
+import { SEARCH_ENGINE_LABELS } from '../../../../shared/browser-url'
 import type { ActiveOption } from './tab-create-entry-active-option'
 
 export const RESULT_LISTBOX_ID = 'tab-create-entry-results'
@@ -169,6 +171,19 @@ function getActionPresentation(option: ActiveOption): {
     }
   }
   const { classification } = option.option
+  if (classification.kind === 'search') {
+    return {
+      detail: classification.query,
+      icon: <Search className="size-3.5 shrink-0" aria-hidden="true" />,
+      label: translate(
+        'auto.components.tab.bar.TabBarCreateEntry.searchProvider',
+        'Search {{value0}}',
+        { value0: SEARCH_ENGINE_LABELS[classification.engine] }
+      ),
+      prioritizeFilename: false,
+      showDetail: true
+    }
+  }
   if (classification.kind === 'explicit-url' || classification.kind === 'host-url') {
     return {
       detail: classification.url,
