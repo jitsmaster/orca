@@ -259,6 +259,23 @@ describe('NativeChatComposer', () => {
     expect(mocks.sendNativeChatMessage).not.toHaveBeenCalled()
   })
 
+  it('keeps Codex skill sends pasted', () => {
+    mocks.draft = '$ref-oss'
+    render(
+      <NativeChatComposer
+        terminalTabId="tab-1"
+        paneKey="tab-1:leaf-1"
+        targetPtyId="pty-1"
+        agent="codex"
+      />
+    )
+
+    act(() => mocks.fieldProps?.onSend?.())
+
+    expect(mocks.sendNativeChatMessage).toHaveBeenCalledWith({}, 'pty-1', '$ref-oss', undefined)
+    expect(mocks.sendNativeChatTypedCommand).not.toHaveBeenCalled()
+  })
+
   it.each(['claude', 'openclaude'] as const)('keeps %s slash composer sends pasted', (agent) => {
     mocks.draft = '/clear'
     render(

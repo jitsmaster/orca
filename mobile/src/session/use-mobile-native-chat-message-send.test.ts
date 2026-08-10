@@ -248,6 +248,19 @@ describe('useMobileNativeChatMessageSend', () => {
     expect(sendWithOutcome).not.toHaveBeenCalled()
   })
 
+  it('keeps Codex skill sends pasted', async () => {
+    mount(() => null, 'codex')
+    await act(async () => {
+      await api!.send('$ref-oss')
+    })
+    expect(acceptSend).not.toHaveBeenCalled()
+    expect(onCommandSend).toHaveBeenCalledWith('$ref-oss')
+    expect(sendWithOutcome).toHaveBeenCalledWith(
+      expect.objectContaining({ text: '$ref-oss', terminal: 'term' })
+    )
+    expect(typeCommandWithOutcome).not.toHaveBeenCalled()
+  })
+
   it('holds only chat sends for transcript confirmation on a lost ack', async () => {
     sendWithOutcome.mockResolvedValue('unknown')
     mount(() => null)

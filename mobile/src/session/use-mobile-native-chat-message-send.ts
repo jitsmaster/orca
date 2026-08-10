@@ -8,6 +8,7 @@ import {
   type MobileNativeChatSendOutcome
 } from './mobile-native-chat-send'
 import type { CatalogCommandDelivery } from '../../../src/shared/agent-session-option-catalog'
+import { isSlashCommandDraft } from '../../../src/shared/native-chat-slash-commands'
 import { healMobileNativeChatStaleInput } from './mobile-native-chat-stale-input'
 import { classifyMobileNativeChatSend } from './mobile-native-chat-send-classification'
 import {
@@ -164,7 +165,10 @@ export function useMobileNativeChatMessageSend(args: {
           ? { text: seededLaunchDraft.text, createdAt: seededLaunchDraft.createdAt }
           : undefined
       const outcome =
-        agent === 'codex' && classification !== 'chat' && !images?.length
+        agent === 'codex' &&
+        classification !== 'chat' &&
+        isSlashCommandDraft(text) &&
+        !images?.length
           ? await typeMobileNativeChatCommandWithOutcome({
               client,
               terminal: handle,
