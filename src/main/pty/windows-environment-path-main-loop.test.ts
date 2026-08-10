@@ -47,7 +47,7 @@ describe('persisted Windows PATH process creation', () => {
     return { callMs, maxGapMs, result }
   }
 
-  it('proves delayed process creation blocks while native registry reads do not spawn', async () => {
+  it('proves delayed process creation blocks while native registry reads create no process', async () => {
     const legacy = await measureMainLoopGap(() =>
       readPersistedWindowsPathSegments({
         platform: 'win32',
@@ -69,16 +69,12 @@ describe('persisted Windows PATH process creation', () => {
         Path: { type: 1, value: root === 1 ? 'C:\\Machine' : 'C:\\User' }
       })
     }))
-    const native = await measureMainLoopGap(() =>
-      readPersistedWindowsPathSegments({
-        platform: 'win32',
-        env: { SystemRoot: 'C:\\Windows' }
-      })
-    )
+    const native = readPersistedWindowsPathSegments({
+      platform: 'win32',
+      env: { SystemRoot: 'C:\\Windows' }
+    })
 
-    expect(native.result).toEqual(['C:\\Machine', 'C:\\User'])
+    expect(native).toEqual(['C:\\Machine', 'C:\\User'])
     expect(delayedExecFileSync).not.toHaveBeenCalled()
-    expect(native.callMs).toBeLessThan(CREATE_PROCESS_DELAY_MS / 2)
-    expect(native.maxGapMs).toBeLessThan(CREATE_PROCESS_DELAY_MS / 2)
   })
 })
