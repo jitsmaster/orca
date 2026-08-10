@@ -312,6 +312,22 @@ describe('RemoteBrowserStreamLifecycle', () => {
     expect(harness.streams[0].unsubscribeCount).toBe(1)
   })
 
+  it('reopens the existing remote page after its stream is parked', async () => {
+    const harness = createHarness()
+    const close = await openStreamAndConfirmReady(harness)
+
+    close()
+    expect(harness.streams[0].unsubscribeCount).toBe(1)
+    harness.lifecycle.open()
+    await settle()
+    harness.streams[1].emitReady()
+    await settle()
+
+    expect(harness.streams.map((stream) => stream.pageId)).toEqual(['page-1', 'page-1'])
+    expect(harness.rpcLog.filter((method) => method === 'browser.tabCreate')).toHaveLength(1)
+    expect(harness.currentStatusKind).toBe('live')
+  })
+
   // STA-3483: the shipped bug was a single 500ms retry that never rescheduled.
   it('keeps retrying a dropped stream with backoff instead of stopping after one attempt', async () => {
     const harness = createHarness()
