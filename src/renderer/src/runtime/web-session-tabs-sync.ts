@@ -1075,7 +1075,7 @@ function buildMirroredBrowserTabs(
     const createdAt = existing?.page.createdAt ?? now + sortOffset + index
     const groupId = hostGroupIdByTabId.get(tab.id) ?? fallbackGroupId
     const title = tab.title.trim() || 'Browser'
-    const page: BrowserPage = {
+    const nextPage: BrowserPage = {
       id: pageId,
       workspaceId,
       worktreeId: snapshot.worktree,
@@ -1090,6 +1090,7 @@ function buildMirroredBrowserTabs(
       browserRuntimeEnvironmentId: environmentId,
       viewportPresetId: existing?.page.viewportPresetId ?? null
     }
+    const page = existing && browserPageEqual(existing.page, nextPage) ? existing.page : nextPage
     const workspace: BrowserWorkspace = {
       id: workspaceId,
       worktreeId: snapshot.worktree,
@@ -1892,6 +1893,9 @@ export function applyWebSessionTabsSnapshot(
   const removedTerminalIds = new Set(
     currentTerminalTabs.filter((tab) => !retainedTerminalIds.has(tab.id)).map((tab) => tab.id)
   )
+  const removedTerminalResourceIds = [...removedTerminalIds].filter(
+    (tabId) => !mirroredTerminalIds.has(tabId)
+  )
   for (const provisionalTabId of exactProvisionalHandoffs) {
     clearWebAgentSessionHandoff({ environmentId, worktreeId, provisionalTabId })
   }
@@ -2259,7 +2263,7 @@ export function applyWebSessionTabsSnapshot(
   })()
 
   let nextPtyIdsByTabId = state.ptyIdsByTabId
-  for (const removedId of removedTerminalIds) {
+  for (const removedId of removedTerminalResourceIds) {
     if (nextPtyIdsByTabId[removedId]) {
       nextPtyIdsByTabId =
         nextPtyIdsByTabId === state.ptyIdsByTabId ? { ...state.ptyIdsByTabId } : nextPtyIdsByTabId
@@ -2267,6 +2271,14 @@ export function applyWebSessionTabsSnapshot(
     }
   }
   for (const { tab, ptyIds } of mirroredTerminalTabs) {
+    if (ptyIds.length === 0) {
+      if (nextPtyIdsByTabId[tab.id]) {
+        nextPtyIdsByTabId =
+          nextPtyIdsByTabId === state.ptyIdsByTabId ? { ...state.ptyIdsByTabId } : nextPtyIdsByTabId
+        delete nextPtyIdsByTabId[tab.id]
+      }
+      continue
+    }
     const current = nextPtyIdsByTabId[tab.id] ?? []
     if (!sameStringArray(current, ptyIds)) {
       nextPtyIdsByTabId =
@@ -2276,7 +2288,7 @@ export function applyWebSessionTabsSnapshot(
   }
 
   let nextTerminalLayoutsByTabId = state.terminalLayoutsByTabId
-  for (const removedId of removedTerminalIds) {
+  for (const removedId of removedTerminalResourceIds) {
     if (nextTerminalLayoutsByTabId[removedId]) {
       nextTerminalLayoutsByTabId =
         nextTerminalLayoutsByTabId === state.terminalLayoutsByTabId
@@ -2330,29 +2342,44 @@ export function applyWebSessionTabsSnapshot(
   let nextBrowserPagesByWorkspace = state.browserPagesByWorkspace
   let nextRemoteBrowserPageHandlesByPageId = state.remoteBrowserPageHandlesByPageId
   let nextBrowserCertificateFailuresByPageId = state.browserCertificateFailuresByPageId
-  for (const removedWorkspaceId of removedBrowserWorkspaceIds) {
-    const pages = nextBrowserPagesByWorkspace[removedWorkspaceId] ?? []
-    if (nextBrowserPagesByWorkspace[removedWorkspaceId]) {
-      nextBrowserPagesByWorkspace =
-        nextBrowserPagesByWorkspace === state.browserPagesByWorkspace
-          ? { ...state.browserPagesByWorkspace }
-          : nextBrowserPagesByWorkspace
-      delete nextBrowserPagesByWorkspace[removedWorkspaceId]
-    }
-    for (const page of pages) {
-      if (nextBrowserCertificateFailuresByPageId[page.id]) {
-        nextBrowserCertificateFailuresByPageId =
-          nextBrowserCertificateFailuresByPageId === state.browserCertificateFailuresByPageId
-            ? { ...state.browserCertificateFailuresByPageId }
-            : nextBrowserCertificateFailuresByPageId
-        delete nextBrowserCertificateFailuresByPageId[page.id]
+  if (removedBrowserWorkspaceIds.size > 0) {
+    const nextBrowserWorkspaceIds = new Set(nextBrowserTabs?.map((tab) => tab.id) ?? [])
+    const nextBrowserPageIds = new Set(mirroredBrowserTabs.map((entry) => entry.page.id))
+    for (const workspace of retainedBrowserTabs) {
+      for (const page of state.browserPagesByWorkspace[workspace.id] ?? []) {
+        nextBrowserPageIds.add(page.id)
       }
-      if (nextRemoteBrowserPageHandlesByPageId[page.id]) {
-        nextRemoteBrowserPageHandlesByPageId =
-          nextRemoteBrowserPageHandlesByPageId === state.remoteBrowserPageHandlesByPageId
-            ? { ...state.remoteBrowserPageHandlesByPageId }
-            : nextRemoteBrowserPageHandlesByPageId
-        delete nextRemoteBrowserPageHandlesByPageId[page.id]
+    }
+    for (const removedWorkspaceId of removedBrowserWorkspaceIds) {
+      const pages = nextBrowserPagesByWorkspace[removedWorkspaceId] ?? []
+      if (
+        !nextBrowserWorkspaceIds.has(removedWorkspaceId) &&
+        nextBrowserPagesByWorkspace[removedWorkspaceId]
+      ) {
+        nextBrowserPagesByWorkspace =
+          nextBrowserPagesByWorkspace === state.browserPagesByWorkspace
+            ? { ...state.browserPagesByWorkspace }
+            : nextBrowserPagesByWorkspace
+        delete nextBrowserPagesByWorkspace[removedWorkspaceId]
+      }
+      for (const page of pages) {
+        if (nextBrowserPageIds.has(page.id)) {
+          continue
+        }
+        if (nextBrowserCertificateFailuresByPageId[page.id]) {
+          nextBrowserCertificateFailuresByPageId =
+            nextBrowserCertificateFailuresByPageId === state.browserCertificateFailuresByPageId
+              ? { ...state.browserCertificateFailuresByPageId }
+              : nextBrowserCertificateFailuresByPageId
+          delete nextBrowserCertificateFailuresByPageId[page.id]
+        }
+        if (nextRemoteBrowserPageHandlesByPageId[page.id]) {
+          nextRemoteBrowserPageHandlesByPageId =
+            nextRemoteBrowserPageHandlesByPageId === state.remoteBrowserPageHandlesByPageId
+              ? { ...state.remoteBrowserPageHandlesByPageId }
+              : nextRemoteBrowserPageHandlesByPageId
+          delete nextRemoteBrowserPageHandlesByPageId[page.id]
+        }
       }
     }
   }

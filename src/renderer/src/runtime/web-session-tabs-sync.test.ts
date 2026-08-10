@@ -2938,7 +2938,7 @@ describe('applyWebSessionTabsSnapshot', () => {
       ptyId: 'remote:web-env-1@@terminal-2',
       title: 'right pane'
     })
-    expect(patch.terminalLayoutsByTabId?.[mirroredTabId]?.activeLeafId).toBe(SECOND_LEAF_ID)
+    expect(patch.terminalLayoutsByTabId).toBeUndefined()
   })
 
   it('removes a null-pty pending activation tab when the host publishes the initial terminal', () => {
@@ -3315,10 +3315,7 @@ describe('applyWebSessionTabsSnapshot', () => {
         title: 'Example Domain'
       }
     ])
-    expect(patch.remoteBrowserPageHandlesByPageId?.[page.id]).toEqual({
-      environmentId: ENV,
-      remotePageId: 'host-browser-page'
-    })
+    expect(patch.remoteBrowserPageHandlesByPageId).toBeUndefined()
     expect(patch.unifiedTabsByWorktree?.[WT]?.map((tab) => tab.id)).toEqual([
       'local-browser-unified'
     ])
