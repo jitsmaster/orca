@@ -161,11 +161,18 @@ export const createSettingsSlice: StateCreator<AppState, [], [], SettingsSlice> 
     } catch (err) {
       console.error('Failed to fetch settings:', err)
     }
-    // Why: best-effort boot probe so sidebar host pickers show live runtime
-    // health before the settings pane is ever opened. Fire-and-forget to keep
-    // startup off the network round-trips. Runs even when settings fail to load,
-    // so surfaces waiting on the catalog settling are never stranded pending.
-    void get().hydrateRuntimeEnvironmentStatuses()
+    const { runtimeEnvironmentCatalogHydrated, runtimeEnvironments, runtimeStatusByEnvironmentId } =
+      get()
+    const runtimeEnvironmentIds = new Set(runtimeEnvironments.map(({ id }) => id))
+    // Why: settings refreshes are frequent, but only incomplete host coverage needs
+    // the all-host boot probe. A recorded null still means the host was checked.
+    if (
+      !runtimeEnvironmentCatalogHydrated ||
+      runtimeEnvironmentIds.size !== runtimeStatusByEnvironmentId.size ||
+      runtimeEnvironments.some(({ id }) => !runtimeStatusByEnvironmentId.has(id))
+    ) {
+      void get().hydrateRuntimeEnvironmentStatuses()
+    }
   },
 
   updateSettings: async (updates) => {

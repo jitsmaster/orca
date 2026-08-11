@@ -5,12 +5,13 @@ import type { PublicKnownRuntimeEnvironment } from '../../../../shared/runtime-e
 import type { RuntimeStatus } from '../../../../shared/runtime-types'
 import {
   clearRecentRuntimeCompatibilityFailure,
-  clearRuntimeCompatibilityCache,
-  unwrapRuntimeRpcResult
+  clearRuntimeCompatibilityCache
 } from '@/runtime/runtime-rpc-client'
 import { replaceRuntimeEnvironmentRevisions } from '@/runtime/runtime-environment-revision'
 import { translate } from '@/i18n/i18n'
 import { bumpProviderRuntimeSessionGeneration } from '@/lib/provider-runtime-context'
+import { createRuntimeStatusHydration } from './runtime-status-hydration'
+import { refreshRuntimeEnvironmentStatus } from './runtime-status-refresh'
 
 /** Live status for one saved runtime environment, as last observed by the
  * renderer. `status === null` records a probe that failed or timed out so the
@@ -323,43 +324,18 @@ export const createRuntimeStatusSlice: StateCreator<AppState, [], [], RuntimeSta
     })
   },
 
-  refreshRuntimeEnvironmentStatus: async (environmentId, timeoutMs = 10_000) => {
-    try {
-      const response = await window.api.runtimeEnvironments.getStatus({
-        selector: environmentId,
-        timeoutMs
-      })
-      const status = unwrapRuntimeRpcResult<RuntimeStatus>(response)
-      // setRuntimeEnvironmentStatus drops any stale compat failure on a non-null
-      // (reachable) status, so a recovered host's reuse-flagged refetches re-probe.
+  refreshRuntimeEnvironmentStatus: (environmentId, timeoutMs = 10_000) =>
+    refreshRuntimeEnvironmentStatus(environmentId, timeoutMs, (status) => {
       get().setRuntimeEnvironmentStatus(environmentId, { status, checkedAt: Date.now() })
-      return true
-    } catch {
-      get().setRuntimeEnvironmentStatus(environmentId, {
-        status: null,
-        checkedAt: Date.now()
-      })
-      return false
-    }
-  },
+    }),
 
-  hydrateRuntimeEnvironmentStatuses: async () => {
-    let environments: PublicKnownRuntimeEnvironment[]
-    try {
-      environments = await window.api.runtimeEnvironments.list()
-    } catch (err) {
-      console.error('Failed to list runtime environments for status hydration:', err)
-      // Why: settled, not hydrated. Skill discovery must stop waiting and fall
-      // back to the local host, but host routing keeps failing closed on an
-      // unknown catalog rather than acting on a stale empty list.
-      set({ runtimeEnvironmentCatalogSettled: true })
-      return
-    }
-    get().setRuntimeEnvironments(environments)
-    // Why: fire-and-forget per env; one unreachable server must not block the
-    // others, and a failure records a null status rather than nothing.
-    await Promise.allSettled(
-      environments.map((environment) => get().refreshRuntimeEnvironmentStatus(environment.id))
-    )
-  }
+  hydrateRuntimeEnvironmentStatuses: createRuntimeStatusHydration({
+    listEnvironments: () => window.api.runtimeEnvironments.list(),
+    getCurrentEnvironments: () => get().runtimeEnvironments,
+    publishEnvironments: (environments) => get().setRuntimeEnvironments(environments),
+    refreshEnvironmentStatus: (environmentId) =>
+      get().refreshRuntimeEnvironmentStatus(environmentId),
+    // Why: failed reads release catalog waiters without claiming routing is safe.
+    markCatalogSettled: () => set({ runtimeEnvironmentCatalogSettled: true })
+  })
 })
