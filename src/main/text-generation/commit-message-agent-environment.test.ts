@@ -31,6 +31,7 @@ function makeHome(): string {
   process.env.SHELL = '/bin/zsh'
   delete process.env.ORCA_OPENCODE_SOURCE_CONFIG_DIR
   delete process.env.ORCA_PI_SOURCE_AGENT_DIR
+  delete process.env.ORCA_PRIME_AGENT_SOURCE_AGENT_DIR
   return dir
 }
 
