@@ -79,6 +79,38 @@ describe('prepareLocalCommitMessageAgentEnv', () => {
     })
   })
 
+  it('hydrates the Prime Agent dir from its own env var for headless generation', async () => {
+    const home = makeHome()
+    delete process.env.PRIME_AGENT_CODING_AGENT_DIR
+    writeFileSync(
+      join(home, '.zshrc'),
+      'export PRIME_AGENT_CODING_AGENT_DIR="$HOME/.config/prime-agent"\n'
+    )
+
+    const result = await prepareLocalCommitMessageAgentEnv('prime-agent', undefined)
+
+    expect(result).toEqual({
+      ok: true,
+      env: expect.objectContaining({
+        PRIME_AGENT_CODING_AGENT_DIR: `${home}/.config/prime-agent`
+      })
+    })
+  })
+
+  it('prefers the original Prime Agent root over inherited PTY overlays', async () => {
+    process.env.PRIME_AGENT_CODING_AGENT_DIR = '/tmp/orca-prime-overlay'
+    process.env.ORCA_PRIME_AGENT_SOURCE_AGENT_DIR = '/Users/tester/.prime/agent'
+
+    const result = await prepareLocalCommitMessageAgentEnv('prime-agent', undefined)
+
+    expect(result).toEqual({
+      ok: true,
+      env: expect.objectContaining({
+        PRIME_AGENT_CODING_AGENT_DIR: '/Users/tester/.prime/agent'
+      })
+    })
+  })
+
   it('prefers the original Pi agent root over inherited PTY overlays', async () => {
     process.env.PI_CODING_AGENT_DIR = '/tmp/orca-pi-overlay'
     process.env.ORCA_PI_SOURCE_AGENT_DIR = '/Users/tester/.pi/agent'

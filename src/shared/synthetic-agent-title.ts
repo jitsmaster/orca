@@ -36,6 +36,12 @@ export const SYNTHETIC_AGENT_TITLE_PROFILES: Record<string, SyntheticAgentTitleP
     idleLabel: 'Pi ready',
     titleIdentityGroup: 'pi-compatible'
   },
+  'prime-agent': {
+    workingLabel: 'Prime Agent',
+    permissionLabel: 'Prime Agent - action required',
+    idleLabel: 'Prime Agent ready',
+    titleIdentityGroup: 'pi-compatible'
+  },
   omp: {
     workingLabel: 'OMP',
     permissionLabel: 'OMP - action required',
