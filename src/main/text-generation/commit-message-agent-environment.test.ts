@@ -23,6 +23,8 @@ afterEach(() => {
   }
 })
 
+/** Create an isolated fake home (Linux) for shell-startup hydration tests,
+ *  registered for cleanup after the suite. */
 function makeHome(): string {
   Object.defineProperty(process, 'platform', { configurable: true, value: 'linux' })
   const dir = mkdtempSync(join(tmpdir(), 'orca-commit-env-'))

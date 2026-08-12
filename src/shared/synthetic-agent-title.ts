@@ -1,5 +1,6 @@
 import type { AgentStatusState, AgentType } from './agent-status-types'
 
+/** Labels and title-driving flags used to synthesize a terminal title for an agent. */
 export type SyntheticAgentTitleProfile = {
   workingLabel: string
   permissionLabel: string
@@ -9,6 +10,7 @@ export type SyntheticAgentTitleProfile = {
   synthesizeWorkingTitle?: boolean
 }
 
+/** Title profiles keyed by agent type; unknown types synthesize no titles. */
 export const SYNTHETIC_AGENT_TITLE_PROFILES: Record<string, SyntheticAgentTitleProfile> = {
   codex: {
     workingLabel: 'Codex',

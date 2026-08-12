@@ -3,6 +3,7 @@ import { applyClaudeEnvPatch } from '../claude-accounts/environment'
 import { readShellStartupEnvVar } from '../pty/shell-startup-env'
 import { parseWslUncPath } from '../../shared/wsl-paths'
 
+/** Optional per-runtime resolvers that prepare env for Codex or Claude launches. */
 export type CommitMessageAgentEnvironmentResolvers = {
   prepareForCodexLaunch?: (target?: CommitMessageAgentRuntimeTarget) => string | null
   prepareForClaudeLaunch?: (
@@ -10,6 +11,7 @@ export type CommitMessageAgentEnvironmentResolvers = {
   ) => Promise<ClaudeRuntimeAuthPreparation>
 }
 
+/** Where the headless commit-message run executes: host or a named WSL distro. */
 export type CommitMessageAgentRuntimeTarget = {
   runtime?: 'host' | 'wsl'
   wslDistro?: string | null
