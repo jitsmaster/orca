@@ -15,6 +15,8 @@ export type CommitMessageAgentRuntimeTarget = {
   wslDistro?: string | null
 }
 
+/** Copies the current process environment into a plain record, skipping
+ *  values that are not set. */
 function cloneProcessEnv(): Record<string, string> {
   const env: Record<string, string> = {}
   for (const [key, value] of Object.entries(process.env)) {
@@ -30,6 +32,9 @@ function cloneProcessEnv(): Record<string, string> {
 // Orca terminal it can inherit an Orca-owned CODEX_HOME override; strip only
 // that (CODEX_HOME matching the private ORCA_CODEX_HOME marker), preserving a
 // user-set CODEX_HOME.
+/** Clones the process env but strips the Orca-owned CODEX_HOME override
+ *  (a CODEX_HOME matching the private ORCA_CODEX_HOME marker) so headless
+ *  commit runs use the user's real ~/.codex. */
 function cloneProcessEnvWithoutOrcaCodexHomeOverride(): Record<string, string> {
   const env = cloneProcessEnv()
   if (env.ORCA_CODEX_HOME && env.CODEX_HOME === env.ORCA_CODEX_HOME) {
@@ -39,6 +44,12 @@ function cloneProcessEnvWithoutOrcaCodexHomeOverride(): Record<string, string> {
   return env
 }
 
+/** Reads an env var from the inherited process env (preferring the ORCA-owned
+ *  source overlay when given) or, failing that, from the user's shell startup
+ *  files.
+ *  @param name - The env var to resolve.
+ *  @param sourceName - Optional ORCA_*_SOURCE_* overlay var to prefer first.
+ *  @returns The resolved value, or undefined when neither source sets it. */
 function readInheritedOrShellEnvVar(name: string, sourceName?: string): string | undefined {
   return (
     (sourceName ? process.env[sourceName] : undefined) ??
@@ -47,6 +58,12 @@ function readInheritedOrShellEnvVar(name: string, sourceName?: string): string |
   )
 }
 
+/** Resolves the config-dir env for shell-config-backed agents (opencode, pi,
+ *  omp, prime-agent, grok), hydrating it from the inherited env or shell
+ *  startup files and restoring the kind-specific source overlay when present.
+ *  @param agentId - The agent id to prepare env for.
+ *  @returns The env patch to apply, or null for agents without a shell config
+ *    dir. */
 function prepareShellConfigDirEnv(agentId: string): { ok: true; env?: NodeJS.ProcessEnv } | null {
   const configVar =
     agentId === 'opencode'
@@ -87,6 +104,14 @@ function prepareShellConfigDirEnv(agentId: string): { ok: true; env?: NodeJS.Pro
   return { ok: true, env: { ...cloneProcessEnv(), [configVar]: value } }
 }
 
+/** Prepares the environment for a headless commit-message (or SourceControl
+ *  AI) agent run: shell-config env for the pi-family agents, Codex/Claude
+ *  resolver paths for those runtimes, with per-target WSL handling.
+ *  @param agentId - The agent id to prepare env for.
+ *  @param resolvers - Optional Codex/Claude launch resolvers used when the
+ *    agent has no shell-config env.
+ *  @param target - Optional runtime target (host vs WSL) for the run.
+ *  @returns The prepared env, or a failure result when preparation errors. */
 export async function prepareLocalCommitMessageAgentEnv(
   agentId: string,
   resolvers: CommitMessageAgentEnvironmentResolvers | undefined,
