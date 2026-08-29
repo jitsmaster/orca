@@ -47,7 +47,8 @@ export function buildRemoteDropdownItems(ctx: DropdownActionContext): RemoteDrop
     behind,
     shouldForcePushWithLease,
     pushLabelCount,
-    forcePushTitle
+    forcePushTitle,
+    isSubjectLinkedWorktree
   } = ctx
 
   const push: DropdownItem = {
@@ -105,14 +106,21 @@ export function buildRemoteDropdownItems(ctx: DropdownActionContext): RemoteDrop
           ? 'PR is already merged'
           : publishBlockedByDetachedHead
             ? 'Check out a branch before pulling commits'
-            : !hasUpstream
-              ? 'Publish the branch first to pull commits'
-              : shouldForcePushWithLease
-                ? 'Nothing new to pull — remote only has older copies of local commits'
-                : behind === 0
-                  ? 'Nothing to pull'
-                  : describePullCount(behind),
-    disabled: globalBusy || upstreamLoading || !hasUpstream || publishBlockedByDetachedHead
+            : isSubjectLinkedWorktree
+              ? 'Pull is not available on a linked worktree'
+              : !hasUpstream
+                ? 'Publish the branch first to pull commits'
+                : shouldForcePushWithLease
+                  ? 'Nothing new to pull — remote only has older copies of local commits'
+                  : behind === 0
+                    ? 'Nothing to pull'
+                    : describePullCount(behind),
+    disabled:
+      globalBusy ||
+      upstreamLoading ||
+      !hasUpstream ||
+      publishBlockedByDetachedHead ||
+      isSubjectLinkedWorktree
   }
 
   const fastForward: DropdownItem = {
@@ -126,16 +134,23 @@ export function buildRemoteDropdownItems(ctx: DropdownActionContext): RemoteDrop
           ? 'PR is already merged'
           : publishBlockedByDetachedHead
             ? 'Check out a branch before fast-forwarding'
-            : !hasUpstream
-              ? 'Publish the branch first to fast-forward'
-              : shouldForcePushWithLease
-                ? 'Nothing new to fast-forward — remote only has older copies of local commits'
-                : behind === 0
-                  ? 'Nothing to fast-forward'
-                  : ahead > 0
-                    ? 'Try a fast-forward pull; git may reject local commits'
-                    : describeFastForwardCount(behind),
-    disabled: globalBusy || upstreamLoading || !hasUpstream || publishBlockedByDetachedHead
+            : isSubjectLinkedWorktree
+              ? 'Fast-forward is not available on a linked worktree'
+              : !hasUpstream
+                ? 'Publish the branch first to fast-forward'
+                : shouldForcePushWithLease
+                  ? 'Nothing new to fast-forward — remote only has older copies of local commits'
+                  : behind === 0
+                    ? 'Nothing to fast-forward'
+                    : ahead > 0
+                      ? 'Try a fast-forward pull; git may reject local commits'
+                      : describeFastForwardCount(behind),
+    disabled:
+      globalBusy ||
+      upstreamLoading ||
+      !hasUpstream ||
+      publishBlockedByDetachedHead ||
+      isSubjectLinkedWorktree
   }
 
   const sync: DropdownItem = {
@@ -149,19 +164,22 @@ export function buildRemoteDropdownItems(ctx: DropdownActionContext): RemoteDrop
           ? 'PR is already merged'
           : publishBlockedByDetachedHead
             ? 'Check out a branch before syncing commits'
-            : !hasUpstream
-              ? 'Publish the branch first to sync commits'
-              : shouldForcePushWithLease
-                ? 'Use Force Push — remote only has older copies of local commits'
-                : ahead === 0 && behind === 0
-                  ? 'Branch is up to date'
-                  : describeSyncCounts(ahead, behind),
+            : isSubjectLinkedWorktree
+              ? 'Sync is not available on a linked worktree'
+              : !hasUpstream
+                ? 'Publish the branch first to sync commits'
+                : shouldForcePushWithLease
+                  ? 'Use Force Push — remote only has older copies of local commits'
+                  : ahead === 0 && behind === 0
+                    ? 'Branch is up to date'
+                    : describeSyncCounts(ahead, behind),
     disabled:
       globalBusy ||
       upstreamLoading ||
       !hasUpstream ||
       publishBlockedByDetachedHead ||
-      shouldForcePushWithLease
+      shouldForcePushWithLease ||
+      isSubjectLinkedWorktree
   }
 
   const rebaseBaseLabel = rebaseBaseRef ? formatRebaseBaseRef(rebaseBaseRef) : null

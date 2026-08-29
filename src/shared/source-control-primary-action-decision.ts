@@ -36,7 +36,8 @@ export function resolveSourceControlPrimaryActionDecision(
     hasCurrentBranch = true,
     canPushLinkedReviewWithoutUpstream = false,
     isPrIntentInFlight = false,
-    isHostedReviewCreationLoading = false
+    isHostedReviewCreationLoading = false,
+    isSubjectLinkedWorktree = false
   } = inputs
 
   if (isPrIntentInFlight) {
@@ -162,6 +163,16 @@ export function resolveSourceControlPrimaryActionDecision(
         requiresForceWithLease: true
       }
     }
+    if (isSubjectLinkedWorktree) {
+      // Why: Sync would merge remote into the local branch (a pull), which is disallowed on a worktree.
+      return {
+        kind: 'push',
+        labelIntent: 'push',
+        titleIntent: 'push_count',
+        disabled: false,
+        count: upstreamStatus.ahead
+      }
+    }
     return {
       kind: 'sync',
       labelIntent: 'sync',
@@ -173,6 +184,14 @@ export function resolveSourceControlPrimaryActionDecision(
   }
 
   if (upstreamStatus.behind > 0) {
+    if (isSubjectLinkedWorktree) {
+      return {
+        kind: 'commit',
+        labelIntent: 'commit',
+        titleIntent: 'pull_unavailable_on_worktree',
+        disabled: true
+      }
+    }
     return {
       kind: 'pull',
       labelIntent: 'pull',

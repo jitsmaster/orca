@@ -46,6 +46,7 @@ export function useSourceControlStatusRefresh({
   const updateWorktreeGitIdentity = useAppStore((s) => s.updateWorktreeGitIdentity)
   const setUpstreamStatus = useAppStore((s) => s.setUpstreamStatus)
   const fetchUpstreamStatus = useAppStore((s) => s.fetchUpstreamStatus)
+  const appActiveWorktreeId = useAppStore((s) => s.activeWorktreeId)
   const refreshActiveGitStatus = useCallback(
     async (signal?: AbortSignal): Promise<void> => {
       if (!activeWorktreeId || !worktreePath || isFolder) {
@@ -87,6 +88,20 @@ export function useSourceControlStatusRefresh({
       console.warn('[SourceControl] post-mutation git status refresh failed', error)
     }
   }, [refreshActiveGitStatus])
+
+  // Why: the global status poller only refreshes the app-active worktree; a viewed non-active
+  // worktree gets one refresh when the picker lands on it so its changes appear immediately.
+  useEffect(() => {
+    if (
+      !activeWorktreeId ||
+      !worktreePath ||
+      isFolder ||
+      activeWorktreeId === appActiveWorktreeId
+    ) {
+      return
+    }
+    void refreshActiveGitStatus()
+  }, [activeWorktreeId, appActiveWorktreeId, isFolder, refreshActiveGitStatus, worktreePath])
 
   // Why: when status is truncated, offer once per worktree to .gitignore the flooding folder; local-only since the SSH huge-folder write path isn't wired.
   useEffect(() => {
