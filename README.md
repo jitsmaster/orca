@@ -225,6 +225,31 @@ brew install --cask stablyai/orca/orca
 yay -S stably-orca-bin
 ```
 
+#### Windows — install this fork's worktree-support build
+
+This fork ships a Windows installer built on GitHub Actions. The latest
+worktree-support build:
+
+- **Download:** [orca-windows-setup.exe](https://github.com/jitsmaster/orca/releases/latest/download/orca-windows-setup.exe)
+- **All releases:** https://github.com/jitsmaster/orca/releases
+
+Install steps:
+
+1. Download `orca-windows-setup.exe` from the [Releases](https://github.com/jitsmaster/orca/releases) page.
+2. Run the installer. Because this fork build is **unsigned**, Windows SmartScreen
+   will show an "Windows protected your PC" prompt — click **More info → Run anyway**.
+3. Follow the installer; Orca installs per-machine to `%LOCALAPPDATA%\Programs\orca`
+   (or the per-user path you select) and adds desktop/Start-menu shortcuts.
+4. Launch Orca. To confirm you're on the worktree-support build, check the app title
+   or version — it reports `1.4.178-rc.2-worktree` or newer.
+
+Notes:
+
+- No auto-update: this fork build is a manual installer. Re-download a new `.exe`
+  from Releases to update.
+- To verify the download: compare the file hash with the checksum, if listed on the
+  release, before running an unsigned installer.
+
 ### Mobile Companion — iOS, Android
 
 Pair with your desktop app to monitor and steer your agents from your phone.
