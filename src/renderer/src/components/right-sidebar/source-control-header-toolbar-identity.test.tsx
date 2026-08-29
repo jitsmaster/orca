@@ -47,6 +47,10 @@ function renderToolbar(options?: {
       filterExpanded={false}
       onFilterQueryChange={vi.fn()}
       onFilterExpandedChange={vi.fn()}
+      worktreeList={[]}
+      selectedWorktreeId={null}
+      appActiveWorktreeId={null}
+      onSelectWorktree={vi.fn()}
       visibleCreatePrHeaderAction={CREATE_PR_ACTION}
       hostedReview={null}
       isCreatePrIntentInFlight={false}

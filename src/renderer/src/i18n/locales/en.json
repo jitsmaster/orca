@@ -12030,7 +12030,13 @@
             "a4e93c21d7": "Current branch: {{value0}}",
             "c7d4e2f801": "Change base ref: {{value0}}",
             "f3a1b8c204": "upstream",
-            "createPrIntentGenerateDetailsFailed": "Could not generate review details. Retry Create PR."
+            "createPrIntentGenerateDetailsFailed": "Could not generate review details. Retry Create PR.",
+            "worktreePickerTriggerTitle": "Worktree: {{value0}}",
+            "worktreePickerSearchPlaceholder": "Search worktrees…",
+            "worktreePickerEmpty": "No worktrees match your search.",
+            "worktreePickerMainBadge": "Main",
+            "worktreePickerCurrentBadge": "Current",
+            "worktreePickerNonActiveNotice": "Viewing {{value0}} — changes and commits shown for this worktree"
           },
           "SourceControlAgentActionDialog": {
             "8e856842d1": "Could not start the selected agent.",

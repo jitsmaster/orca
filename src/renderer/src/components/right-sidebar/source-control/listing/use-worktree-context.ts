@@ -5,7 +5,13 @@ import { getRepoOwnerRoutedSettings } from '@/lib/repo-runtime-owner'
 import { resolveSourceControlLaunchPlatform } from '@/lib/source-control-launch-platform'
 import { getWorktreeGitIdentityDisplay } from '@/lib/worktree-git-identity-display'
 import { useAppStore } from '@/store'
-import { useActiveWorktree, useRepoById, useWorktreeMap } from '@/store/selectors'
+import {
+  useActiveWorktree,
+  useRepoById,
+  useWorktreeById,
+  useWorktreeMap,
+  useWorktreesForRepo
+} from '@/store/selectors'
 import { getGitHubPRCacheKey } from '@/store/slices/github-cache-key'
 import { getHostedReviewCacheKey } from '@/store/slices/hosted-review-cache-identity'
 import type { GitBranchChangeEntry } from '../../../../../../shared/git-diff-compare-types'
@@ -17,13 +23,23 @@ const EMPTY_GIT_STATUS_ENTRIES: GitStatusEntry[] = []
 const EMPTY_BRANCH_CHANGE_ENTRIES: GitBranchChangeEntry[] = []
 
 /**
- * Resolves the active worktree/repo and every store-backed value the Source Control panel reads
- * about it: git status, branch compare, conflict + upstream state, hosted-review cache entries and
- * the repo-owner-routed settings that every git call must be pinned to.
+ * Resolves the worktree/repo the Source Control panel is showing and every store-backed value it
+ * reads about it: git status, branch compare, conflict + upstream state, hosted-review cache
+ * entries and the repo-owner-routed settings that every git call must be pinned to.
+ *
+ * The subject is normally the app-active worktree; the panel can also pin it to another worktree
+ * of the same repo (the worktree picker) so its status/commits are inspected without switching the
+ * active workspace. A subject that disappears from the catalog falls back to the app-active
+ * worktree.
  */
-export function useSourceControlWorktreeContext() {
-  const activeWorktree = useActiveWorktree()
-  const activeWorktreeId = useAppStore((s) => s.activeWorktreeId)
+export function useSourceControlWorktreeContext(subjectWorktreeId?: string | null) {
+  const appActiveWorktreeId = useAppStore((s) => s.activeWorktreeId)
+  const appActiveWorktree = useActiveWorktree()
+  // Why: the subject can be any same-repo worktree; the app-active fallback keeps the panel alive
+  // when the picked worktree is removed or pruned.
+  const activeWorktree =
+    useWorktreeById(subjectWorktreeId ?? appActiveWorktreeId) ?? appActiveWorktree
+  const activeWorktreeId = activeWorktree?.id ?? appActiveWorktreeId
   const activeWorktreeInstanceId = activeWorktree?.instanceId
   const activeGroupId = useAppStore((s) =>
     activeWorktreeId ? s.activeGroupIdByWorktree[activeWorktreeId] : undefined
@@ -35,6 +51,7 @@ export function useSourceControlWorktreeContext() {
   const activeRepoPath = activeRepo?.path ?? null
   const activeRepoConnectionId = activeRepo?.connectionId ?? null
   const activeRepoExecutionHostId = activeRepo?.executionHostId ?? null
+  const worktreeList = useWorktreesForRepo(activeRepoId)
   const gitIdentityDisplay = activeWorktree ? getWorktreeGitIdentityDisplay(activeWorktree) : null
   const branchName = gitIdentityDisplay?.kind === 'branch' ? gitIdentityDisplay.branchName : ''
   const entries = useAppStore((s) =>
@@ -157,6 +174,7 @@ export function useSourceControlWorktreeContext() {
     activeWorktree,
     activeWorktreeId,
     activeWorktreeInstanceId,
+    appActiveWorktreeId,
     branchEntries,
     branchLineTotal,
     branchName,
@@ -177,6 +195,7 @@ export function useSourceControlWorktreeContext() {
     repositoryHuge,
     rightSidebarTab,
     settings,
+    worktreeList,
     worktreeMap,
     worktreePath
   }
