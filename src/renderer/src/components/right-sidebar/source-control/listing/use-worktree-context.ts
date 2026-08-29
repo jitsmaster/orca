@@ -17,10 +17,12 @@ import { getHostedReviewCacheKey } from '@/store/slices/hosted-review-cache-iden
 import type { GitBranchChangeEntry } from '../../../../../../shared/git-diff-compare-types'
 import type { GitStatusEntry } from '../../../../../../shared/git-status-types'
 import { isFolderRepo } from '../../../../../../shared/repo-kind'
+import type { DetectedWorktree } from '../../../../../../shared/worktree/types'
 import { selectReviewCacheData, selectReviewCacheEntry } from '../../review-cache-entry-selection'
 
 const EMPTY_GIT_STATUS_ENTRIES: GitStatusEntry[] = []
 const EMPTY_BRANCH_CHANGE_ENTRIES: GitBranchChangeEntry[] = []
+const EMPTY_DETECTED_WORKTREES: DetectedWorktree[] = []
 
 /**
  * Resolves the worktree/repo the Source Control panel is showing and every store-backed value it
@@ -51,7 +53,26 @@ export function useSourceControlWorktreeContext(subjectWorktreeId?: string | nul
   const activeRepoPath = activeRepo?.path ?? null
   const activeRepoConnectionId = activeRepo?.connectionId ?? null
   const activeRepoExecutionHostId = activeRepo?.executionHostId ?? null
-  const worktreeList = useWorktreesForRepo(activeRepoId)
+  // Why: the picker lists every git worktree of the repo, including detected siblings that the
+  // sidebar visibility policy hides — status/commits can still be inspected for them.
+  const knownWorktrees = useWorktreesForRepo(activeRepoId)
+  const detectedWorktrees = useAppStore((s) =>
+    activeRepoId
+      ? (s.detectedWorktreesByRepo?.[activeRepoId]?.worktrees ?? EMPTY_DETECTED_WORKTREES)
+      : EMPTY_DETECTED_WORKTREES
+  )
+  const worktreeList = useMemo(() => {
+    if (detectedWorktrees.length === 0) {
+      return knownWorktrees
+    }
+    const byId = new Map(knownWorktrees.map((worktree) => [worktree.id, worktree]))
+    for (const worktree of detectedWorktrees) {
+      if (!byId.has(worktree.id)) {
+        byId.set(worktree.id, worktree)
+      }
+    }
+    return [...byId.values()]
+  }, [detectedWorktrees, knownWorktrees])
   const gitIdentityDisplay = activeWorktree ? getWorktreeGitIdentityDisplay(activeWorktree) : null
   const branchName = gitIdentityDisplay?.kind === 'branch' ? gitIdentityDisplay.branchName : ''
   const entries = useAppStore((s) =>
