@@ -101,7 +101,10 @@ jobs:
         run: |
           set -euo pipefail
           node config/scripts/ensure-native-runtime.mjs --runtime=electron
-          pnpm exec electron-builder --config config/electron-builder.config.cjs --win
+          # Why --publish never: the config's publish block resolves to a stablyai
+          # dev-channel repo and would auto-upload without our token. This workflow
+          # creates the fork release itself with `gh release create` afterwards.
+          pnpm exec electron-builder --config config/electron-builder.config.cjs --win --publish never
         env:
           ORCA_BUILD_COMMIT: ${{ github.sha }}
           # Why: unsigned fork build — the dev-channel flag drops the SignPath
