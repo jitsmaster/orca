@@ -247,6 +247,11 @@ function resolvePrimaryActionTitle(
         'auto.components.right.sidebar.source.control.primary.action.8f9a0b1c2d',
         'Nothing to commit. Branch is up to date.'
       )
+    case 'pull_unavailable_on_worktree':
+      return translate(
+        'auto.components.right.sidebar.source.control.primary.action.pull_unavailable_on_worktree',
+        'Pull is not available on a linked worktree.'
+      )
     case 'checking_review_creation':
       return translate(
         'auto.components.right.sidebar.source.control.primary.action.h3i4j5k607',

@@ -36,7 +36,8 @@ export function useSourceControlActionModel({
   isCreatingPr,
   hostedReviewReviewLabel,
   conflictOperation,
-  effectiveBaseRef
+  effectiveBaseRef,
+  isSubjectLinkedWorktree
 }: {
   grouped: SourceControlEntryGroups
   commitMessage: string
@@ -52,6 +53,7 @@ export function useSourceControlActionModel({
   branchSummary: GitBranchCompareSummary | null
   branchName: string
   canUseHostedReviewPushTarget: boolean
+  isSubjectLinkedWorktree: boolean
   isCreatePrIntentInFlight: boolean
   remoteStatus: HeaderInput['upstreamStatus']
   hostedReviewState: HeaderInput['prState']
@@ -98,7 +100,8 @@ export function useSourceControlActionModel({
           branchSummary?.status === 'ready' ? (branchSummary.commitsAhead ?? 0) : undefined,
         hasCurrentBranch: Boolean(branchName),
         canPushLinkedReviewWithoutUpstream: canUseHostedReviewPushTarget,
-        isPrIntentInFlight: isCreatePrIntentInFlight
+        isPrIntentInFlight: isCreatePrIntentInFlight,
+        isSubjectLinkedWorktree
       }),
     [
       commitMessage,
@@ -115,6 +118,7 @@ export function useSourceControlActionModel({
       hostedReviewStateForActions,
       canUseHostedReviewPushTarget,
       isCreatePrIntentInFlight,
+      isSubjectLinkedWorktree,
       branchSummary?.commitsAhead,
       branchSummary?.status,
       branchName,
@@ -215,7 +219,8 @@ export function useSourceControlActionModel({
           branchSummary?.status === 'ready' ? (branchSummary.commitsAhead ?? 0) : undefined,
         hasCurrentBranch: Boolean(branchName),
         canPushLinkedReviewWithoutUpstream: canUseHostedReviewPushTarget,
-        rebaseBaseRef: effectiveBaseRef
+        rebaseBaseRef: effectiveBaseRef,
+        isSubjectLinkedWorktree
       }),
     [
       commitMessage,
@@ -235,6 +240,7 @@ export function useSourceControlActionModel({
       hostedReviewStateForActions,
       prGenerating,
       canUseHostedReviewPushTarget,
+      isSubjectLinkedWorktree,
       branchSummary?.commitsAhead,
       branchSummary?.status,
       branchName,
