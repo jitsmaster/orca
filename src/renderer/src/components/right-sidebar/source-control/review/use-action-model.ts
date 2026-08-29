@@ -38,7 +38,7 @@ export function useSourceControlActionModel({
   hasSuppressedGitHubPRState,
   conflictOperation,
   effectiveBaseRef,
-  isSubjectLinkedWorktree
+  isSubjectLinkedWorktree = false
 }: {
   grouped: SourceControlEntryGroups
   commitMessage: string
@@ -54,7 +54,7 @@ export function useSourceControlActionModel({
   branchSummary: GitBranchCompareSummary | null
   branchName: string
   canUseHostedReviewPushTarget: boolean
-  isSubjectLinkedWorktree: boolean
+  isSubjectLinkedWorktree?: boolean
   isCreatePrIntentInFlight: boolean
   remoteStatus: HeaderInput['upstreamStatus']
   hostedReviewState: HeaderInput['prState']
