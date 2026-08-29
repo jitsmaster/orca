@@ -1,0 +1,138 @@
+name: Fork Windows Installer Release
+
+# Why: a self-contained Windows release build for the fork repo (jitsmaster/orca).
+# The upstream dev-channel workflow targets stablyai's orca-* repos with app tokens
+# we do not have, so this workflow builds the installer on a Windows runner and
+# publishes it to a GitHub release on the fork where the workflow runs.
+#
+# Usage:
+#   gh workflow run fork-win-release.yml --ref main \
+#     -f ref=main -f version=1.4.178-rc.2-worktree
+#
+# Produces a release tagged v<version> carrying dist/orca-windows-setup.exe.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Ref (branch or SHA) to build. Must be reachable in the fork.'
+        required: true
+        default: 'main'
+      version:
+        description: 'Version to package and tag (no leading v). Defaults to package.json.'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fork-win-release-${{ inputs.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-win:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
+
+    steps:
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${{ inputs.version }}" ]]; then
+            echo "version=${{ inputs.version }}" >>"$GITHUB_OUTPUT"
+          else
+            echo "version=$(node -p "require('./package.json').version")" >>"$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout the built ref
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: package.json
+          cache: pnpm
+
+      - name: Cache electron-builder downloads
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~\AppData\Local\electron\Cache
+            ~\AppData\Local\electron-builder\Cache
+          key: electron-builder-win-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            electron-builder-win-
+
+      - name: Install dependencies
+        uses: nick-fields/retry@v4
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          retry_wait_seconds: 30
+          command: pnpm install --frozen-lockfile
+
+      - name: Build Windows process-table addon for the relay
+        shell: bash
+        run: |
+          node config/scripts/build-windows-process-tree-relay-addon.mjs --arch=x64
+          node config/scripts/build-windows-process-tree-relay-addon.mjs --arch=arm64
+
+      - name: Build app
+        shell: bash
+        run: pnpm build:release
+        env:
+          ORCA_REQUIRE_RELAY_NATIVE_ADDONS: 'x64,arm64'
+
+      - name: Package Windows installer
+        shell: bash
+        run: |
+          set -euo pipefail
+          node config/scripts/ensure-native-runtime.mjs --runtime=electron
+          pnpm exec electron-builder --config config/electron-builder.config.cjs --win
+        env:
+          ORCA_BUILD_COMMIT: ${{ github.sha }}
+          # Why: unsigned fork build — the dev-channel flag drops the SignPath
+          # publisherName so an unsigned installer does not claim it. Its version
+          # is carried via the matching ORCA_ADHOC_BUILD_VERSION.
+          ORCA_WIN_ADHOC: '1'
+          ORCA_ADHOC_BUILD_VERSION: ${{ steps.version.outputs.version }}
+
+      - name: Create fork release and upload installer
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="${{ steps.version.outputs.version }}"
+          tag="v${version}"
+          installer="dist/orca-windows-setup.exe"
+          if [[ ! -f "$installer" ]]; then
+            echo "::error::Installer not found at $installer"
+            ls -la dist/ || true
+            exit 1
+          fi
+          if gh release view "$tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "Release $tag already exists; uploading installer asset."
+            gh release upload "$tag" "$installer" --repo "${{ github.repository }}" --clobber
+          else
+            echo "Creating release $tag"
+            gh release create "$tag" "$installer" \
+              --repo "${{ github.repository }}" \
+              --target "${{ github.sha }}" \
+              --title "Orca $version" \
+              --notes "Fork worktree-support build ($version). Unsigned — see README Windows install notes."
+          fi
+          echo "Release ready: https://github.com/${{ github.repository }}/releases/tag/$tag"
