@@ -165,6 +165,60 @@ describe('source-control primary action decision', () => {
     expect(resolveSourceControlCommitAreaPrimaryActionDecision(input).kind).toBe('commit')
   })
 
+  it('returns disabled pull-blocked action on a linked worktree when behind only', () => {
+    const result = resolveSourceControlCommitAreaPrimaryActionDecision(
+      inputs({
+        upstreamStatus: { hasUpstream: true, ahead: 0, behind: 3 },
+        isSubjectLinkedWorktree: true
+      })
+    )
+    expect(result).toMatchObject({
+      kind: 'commit',
+      titleIntent: 'pull_unavailable_on_worktree',
+      disabled: true
+    })
+  })
+
+  it('keeps push available on a linked worktree with no upstream', () => {
+    const result = resolveSourceControlCommitAreaPrimaryActionDecision(
+      inputs({
+        upstreamStatus: { hasUpstream: false, ahead: 0, behind: 0 },
+        hasCurrentBranch: true,
+        isSubjectLinkedWorktree: true
+      })
+    )
+    expect(result).toMatchObject({
+      kind: 'publish',
+      titleIntent: 'publish_branch',
+      disabled: false
+    })
+  })
+
+  it('returns push instead of sync on a linked worktree when diverged', () => {
+    const result = resolveSourceControlCommitAreaPrimaryActionDecision(
+      inputs({
+        upstreamStatus: { hasUpstream: true, ahead: 2, behind: 3 },
+        isSubjectLinkedWorktree: true
+      })
+    )
+    expect(result).toMatchObject({
+      kind: 'push',
+      titleIntent: 'push_count',
+      count: 2,
+      disabled: false
+    })
+  })
+
+  it('keeps pull for the main checkout when behind', () => {
+    const result = resolveSourceControlCommitAreaPrimaryActionDecision(
+      inputs({
+        upstreamStatus: { hasUpstream: true, ahead: 0, behind: 3 },
+        isSubjectLinkedWorktree: false
+      })
+    )
+    expect(result).toMatchObject({ kind: 'pull', titleIntent: 'pull_count', disabled: false })
+  })
+
   it('returns disabled create review while hosted-review creation eligibility is loading', () => {
     const input = inputs({
       upstreamStatus: { hasUpstream: true, ahead: 0, behind: 0 },
