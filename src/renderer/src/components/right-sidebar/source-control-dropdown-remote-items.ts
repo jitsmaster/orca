@@ -66,13 +66,19 @@ export function buildRemoteDropdownItems(ctx: DropdownActionContext): RemoteDrop
               ? 'Push this branch and set an upstream if needed'
               : shouldForcePushWithLease
                 ? 'Try a regular push; git may require force push'
-                : behind > 0 && ahead > 0
-                  ? 'Push local commits; git may require syncing first'
-                  : ahead === 0
-                    ? `Nothing to push${upstreamStatus?.upstreamName ? ` to ${upstreamStatus.upstreamName}` : ''}`
-                    : describePushCount(ahead),
-    // Why: Push stays available without an upstream (git resolves --set-upstream) and under force-with-lease; only detached HEAD and unknown review targets block.
-    disabled: globalBusy || publishBlockedByDetachedHead || pushBlockedByOpenHostedReviewTarget
+                : isSubjectLinkedWorktree && behind > 0 && ahead > 0
+                  ? 'Diverged from remote. Push is not available on a linked worktree — reconcile on the main checkout.'
+                  : behind > 0 && ahead > 0
+                    ? 'Push local commits; git may require syncing first'
+                    : ahead === 0
+                      ? `Nothing to push${upstreamStatus?.upstreamName ? ` to ${upstreamStatus.upstreamName}` : ''}`
+                      : describePushCount(ahead),
+    // Why: Push stays available without an upstream (git resolves --set-upstream) and under force-with-lease; only detached HEAD, unknown review targets, and a diverged linked worktree (a plain push would be rejected as non-fast-forward) block.
+    disabled:
+      globalBusy ||
+      publishBlockedByDetachedHead ||
+      pushBlockedByOpenHostedReviewTarget ||
+      (isSubjectLinkedWorktree && behind > 0 && ahead > 0 && !shouldForcePushWithLease)
   }
 
   const forcePush: DropdownItem = {

@@ -22,6 +22,7 @@ export function buildCommitDropdownItems(ctx: DropdownActionContext): CommitDrop
     publishBlockedByMergedPR,
     publishBlockedByPRLoading,
     publishBlockedByDetachedHead,
+    ahead,
     behind,
     shouldForcePushWithLease,
     commitDisabledReason,
@@ -52,12 +53,14 @@ export function buildCommitDropdownItems(ctx: DropdownActionContext): CommitDrop
             ? 'Linked review branch target is unavailable'
             : !hasUpstream && !(hasOpenHostedReview && canPushLinkedReviewWithoutUpstream)
               ? 'Publish the branch first to push commits'
-              : (commitDisabledReason ??
-                (shouldForcePushWithLease
-                  ? 'Commit staged changes and force push with lease'
-                  : behind > 0
-                    ? 'Commit staged changes and try to push'
-                    : 'Commit staged changes and push'))
+              : isSubjectLinkedWorktree && behind > 0 && ahead > 0 && !shouldForcePushWithLease
+                ? 'Diverged from remote. Push is not available on a linked worktree — reconcile on the main checkout.'
+                : (commitDisabledReason ??
+                  (shouldForcePushWithLease
+                    ? 'Commit staged changes and force push with lease'
+                    : behind > 0
+                      ? 'Commit staged changes and try to push'
+                      : 'Commit staged changes and push'))
   const commitPush: DropdownItem = {
     kind: 'commit_push',
     label: shouldForcePushWithLease ? 'Commit & Force Push' : 'Commit & Push',
@@ -70,6 +73,7 @@ export function buildCommitDropdownItems(ctx: DropdownActionContext): CommitDrop
       publishBlockedByDetachedHead ||
       publishBlockedByPRLoading ||
       publishBlockedByMergedPR ||
+      (isSubjectLinkedWorktree && behind > 0 && ahead > 0 && !shouldForcePushWithLease) ||
       commitDisabledReason !== null
   }
 

@@ -194,7 +194,7 @@ describe('source-control primary action decision', () => {
     })
   })
 
-  it('returns push instead of sync on a linked worktree when diverged', () => {
+  it('returns a disabled push on a linked worktree when diverged without patch-equivalence', () => {
     const result = resolveSourceControlCommitAreaPrimaryActionDecision(
       inputs({
         upstreamStatus: { hasUpstream: true, ahead: 2, behind: 3 },
@@ -203,8 +203,28 @@ describe('source-control primary action decision', () => {
     )
     expect(result).toMatchObject({
       kind: 'push',
-      titleIntent: 'push_count',
+      titleIntent: 'push_unavailable_on_worktree',
       count: 2,
+      disabled: true
+    })
+  })
+
+  it('offers force-push-with-lease on a linked worktree when diverged and patch-equivalent', () => {
+    const result = resolveSourceControlCommitAreaPrimaryActionDecision(
+      inputs({
+        upstreamStatus: {
+          hasUpstream: true,
+          ahead: 2,
+          behind: 3,
+          behindCommitsArePatchEquivalent: true
+        },
+        isSubjectLinkedWorktree: true
+      })
+    )
+    expect(result).toMatchObject({
+      kind: 'push',
+      labelIntent: 'force_push',
+      titleIntent: 'force_push_with_lease',
       disabled: false
     })
   })

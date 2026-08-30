@@ -48,6 +48,7 @@ export type SourceControlPrimaryActionTitleIntent =
   | 'nothing_to_commit_up_to_date'
   | 'checking_review_creation'
   | 'pull_unavailable_on_worktree'
+  | 'push_unavailable_on_worktree'
 
 export type SourceControlPrimaryActionDecision = {
   kind: SourceControlPrimaryActionKind

@@ -3,11 +3,12 @@ import { useAppStore } from '@/store'
 import type { Worktree } from '../../../../../../shared/worktree/types'
 
 /**
- * Owns which worktree the Source Control panel is showing. Defaults to the app-active worktree; the
- * user can pin another worktree of the same repo through the picker. The pin survives app-active
- * switches within the same repo (so a reviewed worktree stays in view while the user works
- * elsewhere), resets when the active repo changes, and falls back to the app-active worktree when
- * the pinned one disappears from the catalog.
+ * Owns which worktree the Source Control panel is showing. With no pin the panel follows the
+ * app-active worktree on every switch (including same-repo switches, since the right sidebar
+ * stays mounted); the user can pin another worktree of the same repo through the picker. The pin
+ * survives app-active switches within the same repo (so a reviewed worktree stays in view while
+ * the user works elsewhere), resets when the active repo changes, and falls back to the app-active
+ * worktree when the pinned one disappears from the catalog.
  *
  * The known-worktree catalog spans both registered workspaces and detected git worktrees, so a pin
  * can target a worktree Orca has only detected (e.g. externally created siblings hidden from the
@@ -37,13 +38,16 @@ export function useSourceControlViewWorktreeSelection(): {
     return map
   }, [detectedWorktreesByRepo, worktreesByRepo])
   const appActiveRepoId = knownWorktreeById.get(appActiveWorktreeId ?? '')?.repoId ?? null
-  const [viewWorktreeId, setViewWorktreeId] = useState<string | null>(appActiveWorktreeId)
+  // Why: null means "not pinned" — the subject falls back to the app-active worktree below, so a
+  // same-repo app-active switch is followed without an explicit pick. Only a picker selection
+  // assigns a real pin.
+  const [viewWorktreeId, setViewWorktreeId] = useState<string | null>(null)
   // Why: reset during render instead of key-remounting on switch (which caused a Windows IPC storm).
   // Keyed to the repo so a same-repo app-active switch keeps the user's explicit pin.
   const [selectionRepoId, setSelectionRepoId] = useState(appActiveRepoId)
   if (selectionRepoId !== appActiveRepoId) {
     setSelectionRepoId(appActiveRepoId)
-    setViewWorktreeId(appActiveWorktreeId)
+    setViewWorktreeId(null)
   }
   const subjectWorktreeId =
     viewWorktreeId && knownWorktreeById.has(viewWorktreeId) ? viewWorktreeId : appActiveWorktreeId

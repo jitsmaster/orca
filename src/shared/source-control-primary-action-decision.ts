@@ -164,12 +164,14 @@ export function resolveSourceControlPrimaryActionDecision(
       }
     }
     if (isSubjectLinkedWorktree) {
-      // Why: Sync would merge remote into the local branch (a pull), which is disallowed on a worktree.
+      // Why: a diverged branch cannot fast-forward with a plain push (git rejects
+      // non-fast-forward), and force-push would rewrite remote history the worktree
+      // hasn't reconciled. Reconcile on the main checkout instead.
       return {
         kind: 'push',
         labelIntent: 'push',
-        titleIntent: 'push_count',
-        disabled: false,
+        titleIntent: 'push_unavailable_on_worktree',
+        disabled: true,
         count: upstreamStatus.ahead
       }
     }
