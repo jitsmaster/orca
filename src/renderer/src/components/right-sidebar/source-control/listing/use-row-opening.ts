@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from 'react'
 import { detectLanguage } from '@/lib/language-detect'
 import { joinPath } from '@/lib/path'
+import { activateAndRevealWorktree } from '@/lib/worktree-activation'
 import { useAppStore } from '@/store'
 import type {
   GitBranchChangeEntry,
@@ -87,6 +88,9 @@ export function useSourceControlRowOpening({
       if (!activeWorktreeId || !worktreePath) {
         return
       }
+      // Why: the file/diff tab renders inside the shown worktree's own workspace, which is invisible
+      // unless it's also the active one — activation is what makes the opened diff show up.
+      activateAndRevealWorktree(activeWorktreeId, { providesInitialSurface: true })
       const targetGroupId = resolveSplitTargetGroupId(event)
       const openAsPreview = shouldOpenSourceControlRowAsPreview(event, targetGroupId)
       if (entry.conflictKind && entry.conflictStatus) {
@@ -143,6 +147,9 @@ export function useSourceControlRowOpening({
       ) {
         return
       }
+      // Why: same as handleOpenDiff — the committed-file diff tab only becomes visible once its
+      // worktree is the active one.
+      activateAndRevealWorktree(activeWorktreeId, { providesInitialSurface: true })
       const targetGroupId = resolveSplitTargetGroupId(event)
       openBranchDiff(
         activeWorktreeId,
