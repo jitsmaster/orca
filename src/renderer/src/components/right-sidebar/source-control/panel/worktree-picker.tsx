@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react'
-import { Check, ChevronsUpDown, Eye, Workflow } from 'lucide-react'
+import { Check, ChevronsUpDown, Eye, GitBranch, Workflow } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Command,
@@ -12,7 +12,6 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { cn } from '@/lib/utils'
 import { translate } from '@/i18n/i18n'
 import type { Worktree } from '../../../../../../shared/worktree/types'
-import { getWorktreeGitIdentityDisplay } from '@/lib/worktree-git-identity-display'
 import { filterSourceControlWorktrees } from './worktree-picker-filter'
 
 type SourceControlWorktreePickerProps = {
@@ -132,13 +131,6 @@ export function SourceControlWorktreePicker({
             {filteredWorktrees.map((worktree) => {
               const isSelected = worktree.id === selectedWorktreeId
               const isCurrent = worktree.id === currentWorktreeId
-              const identity = getWorktreeGitIdentityDisplay(worktree)
-              const headLabel =
-                identity?.kind === 'branch'
-                  ? identity.branchName
-                  : identity?.kind === 'detached'
-                    ? identity.sourceControlLabel
-                    : null
               return (
                 <CommandItem
                   key={worktree.id}
@@ -152,6 +144,10 @@ export function SourceControlWorktreePicker({
                       'size-3 shrink-0 text-muted-foreground',
                       isSelected ? 'opacity-70' : 'opacity-0'
                     )}
+                  />
+                  <GitBranch
+                    className="size-3 shrink-0 text-muted-foreground"
+                    aria-hidden="true"
                   />
                   <div className="min-w-0 flex-1">
                     <span className="flex min-w-0 items-center gap-1.5">
@@ -173,9 +169,11 @@ export function SourceControlWorktreePicker({
                         </span>
                       ) : null}
                     </span>
-                    <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
-                      {headLabel ? <span className="font-mono">{headLabel} · </span> : null}
-                      <span className="font-mono">{worktree.path}</span>
+                    <p
+                      className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground"
+                      title={worktree.path}
+                    >
+                      {worktree.path}
                     </p>
                   </div>
                 </CommandItem>
