@@ -36,6 +36,7 @@ export function SourceControlPanelReady(props: SourceControlPanelReadyProps) {
     handleCopyDiffComments,
     handleCreatePrHeaderClick,
     handleOpenComment,
+    handleRelinkSuppressedGitHubPR,
     handleSourceControlKeyDown,
     handleToggleSourceControlViewMode,
     hostedReview,
@@ -57,6 +58,7 @@ export function SourceControlPanelReady(props: SourceControlPanelReadyProps) {
     setViewWorktreeId,
     settings,
     sourceControlViewMode,
+    suppressedGitHubPRState,
     visibleCreatePrHeaderAction,
     worktreeList
   } = model
@@ -83,6 +85,10 @@ export function SourceControlPanelReady(props: SourceControlPanelReadyProps) {
           isCreatingPr={isCreatingPr || prGenerating}
           onCreatePrHeaderClick={handleCreatePrHeaderClick}
           onOpenHostedReviewInChecks={openHostedReviewInChecks}
+          suppressedGitHubPRNumber={
+            suppressedGitHubPRState?.status === 'matched' ? suppressedGitHubPRState.number : null
+          }
+          onRelinkSuppressedGitHubPR={handleRelinkSuppressedGitHubPR}
           sourceControlViewMode={sourceControlViewMode}
           viewModeToggleDisabled={settings === null}
           onToggleViewMode={handleToggleSourceControlViewMode}

@@ -57,7 +57,10 @@ import {
   type HttpLinkSourceOwner
 } from '@/lib/http-link-routing'
 import { resolveTerminalHttpLinkSourceOwner } from './terminal-http-link-source-owner'
-import { canOpenWorkspaceBrowserTabOnRuntime } from '@/lib/workspace-browser-tab-open'
+import {
+  canOpenWorkspaceBrowserTabOnRuntime,
+  canOpenWorkspaceBrowserTabOnSsh
+} from '@/lib/workspace-browser-tab-open'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import type { TerminalLayoutSnapshot, TerminalTab } from '../../../../shared/terminal-tab-types'
 import type { TuiAgent } from '../../../../shared/tui-agent'
@@ -95,6 +98,7 @@ import {
   resolveNonLatinControlChordInput
 } from './terminal-non-latin-control-chord'
 import { installTerminalImeCompositionTracker } from './terminal-ime-composition-tracker'
+import { installTerminalImeComposerPlaceholderMask } from './terminal-ime-composer-placeholder-mask'
 import { isCurrentPlatformIosWeb } from '@/lib/ios-web-platform'
 import { installTerminalImeLinuxCandidateState } from './terminal-ime-linux-candidate-state'
 import {
@@ -143,10 +147,8 @@ import {
   setPrimarySelectionText
 } from '@/lib/primary-selection'
 import {
-  SPLIT_TERMINAL_PANE_EVENT,
   CLOSE_TERMINAL_PANE_EVENT,
   WAKE_HIBERNATED_AGENTS_WORKTREE_EVENT,
-  type SplitTerminalPaneDetail,
   type CloseTerminalPaneDetail,
   type WakeHibernatedAgentsWorktreeDetail
 } from '@/constants/terminal'
@@ -161,6 +163,11 @@ import {
   resolveTabTitleAfterPaneClose,
   shouldClearLaunchAgentForClosedPane
 } from './terminal-pane-close-identity'
+import {
+  cancelQueuedTerminalPaneSplitRequests,
+  registerTerminalPaneSplitRequestHandler,
+  resolveTerminalPaneSplitSourceId
+} from './terminal-pane-split-request-routing'
 
 export function resetTerminalKeyboardProtocolAfterInterrupt(terminal: Terminal): void {
   // Guarded output path so a throwing xterm can't escape the key handler.
@@ -293,9 +300,10 @@ type UseTerminalPaneLifecycleDeps = {
   replayingPanesRef: ReplayingPanesRef
   isActiveRef: React.RefObject<boolean>
   isVisibleRef: React.RefObject<boolean>
-  onPtyExitRef: React.RefObject<(ptyId: string) => void>
+  onPtyExitRef: React.RefObject<(ptyId: string, exitCode?: number) => void>
   onAgentExitedRef: React.RefObject<(leafId: string) => void>
   onPtyErrorRef?: React.RefObject<(paneId: number, message: string) => void>
+  onPtyErrorClearedRef?: React.RefObject<(paneId: number, message?: string) => void>
   onPaneProcessDied?: (processExit: PaneProcessExit) => void
   onPtyRecoveryStateRef?: React.RefObject<
     (paneId: number, state: PtyTransportRecoveryState | null) => void
@@ -328,7 +336,13 @@ type UseTerminalPaneLifecycleDeps = {
   }) => void
   setCacheTimerStartedAt: (key: string, ts: number | null) => void
   syncPanePtyLayoutBinding: (paneId: number, ptyId: string | null) => void
+  syncPanePtyLayoutBindingForLeaf?: (
+    leafId: string,
+    ptyId: string | null,
+    sourcePaneId: number
+  ) => void
   clearExitedPanePtyLayoutBinding: (paneId: number, exitedPtyId: string) => void
+  clearExitedPanePtyLayoutBindingForLeaf?: (leafId: string, exitedPtyId: string) => void
   /** Settles the captured one-shot startup only after a pane owns a concrete PTY. */
   onStartupBound?: () => void
   setTabPaneExpanded: (tabId: string, expanded: boolean) => void
@@ -642,6 +656,7 @@ export function applyTerminalPaneCloseRequest(args: {
 
 export function retireMountedTerminalPaneSurface(args: {
   paneKey: string
+  leafId: string
   paneId: number
   tabId: string
   ptyId: string | null
@@ -650,6 +665,12 @@ export function retireMountedTerminalPaneSurface(args: {
     options?: { preserveSleepingAgentSession?: boolean }
   ) => void
   syncPanePtyLayoutBinding: (paneId: number, ptyId: string | null) => void
+  syncPanePtyLayoutBindingForLeaf?: (
+    leafId: string,
+    ptyId: string | null,
+    sourcePaneId: number
+  ) => void
+  clearExitedPanePtyLayoutBindingForLeaf?: (leafId: string, exitedPtyId: string) => void
   clearTabPtyId: (tabId: string, ptyId: string) => void
   transport?: {
     detach?: (options?: { preserveExitObserver?: boolean }) => void
@@ -660,7 +681,14 @@ export function retireMountedTerminalPaneSurface(args: {
     preserveSleepingAgentSession: true
   })
   if (args.ptyId) {
-    args.syncPanePtyLayoutBinding(args.paneId, null)
+    if (args.clearExitedPanePtyLayoutBindingForLeaf) {
+      // Match the old PTY before clearing so an overlapping successor cannot lose its binding.
+      args.clearExitedPanePtyLayoutBindingForLeaf(args.leafId, args.ptyId)
+    } else if (args.syncPanePtyLayoutBindingForLeaf) {
+      args.syncPanePtyLayoutBindingForLeaf(args.leafId, null, args.paneId)
+    } else {
+      args.syncPanePtyLayoutBinding(args.paneId, null)
+    }
     args.clearTabPtyId(args.tabId, args.ptyId)
   }
   // preserveExitObserver:false — a retired surface keeps its PTY alive but starts no parked
@@ -704,6 +732,7 @@ export function useTerminalPaneLifecycle({
   onPtyExitRef,
   onAgentExitedRef,
   onPtyErrorRef,
+  onPtyErrorClearedRef,
   onPaneProcessDied,
   onPtyRecoveryStateRef,
   clearTabPtyId,
@@ -723,7 +752,9 @@ export function useTerminalPaneLifecycle({
   dispatchNotification,
   setCacheTimerStartedAt,
   syncPanePtyLayoutBinding,
+  syncPanePtyLayoutBindingForLeaf,
   clearExitedPanePtyLayoutBinding,
+  clearExitedPanePtyLayoutBindingForLeaf,
   onStartupBound,
   setTabPaneExpanded,
   setTabCanExpandPane,
@@ -828,14 +859,21 @@ export function useTerminalPaneLifecycle({
       resolvePaneLinkCwd(paneCwdRef.current, paneId, startupCwd)
     const getHttpLinkSourceOwnerForPane = (paneId: number) =>
       resolveTerminalHttpLinkSourceOwner(paneTransportsRef.current.get(paneId))
-    const canOpenRuntimeBrowserForPane = (paneId: number): boolean => {
+    const canOpenOwnedBrowserForPane = (paneId: number): boolean => {
       const sourceOwner = getHttpLinkSourceOwnerForPane(paneId)
-      return (
-        sourceOwner.kind === 'runtime' &&
-        canOpenWorkspaceBrowserTabOnRuntime(
+      if (sourceOwner.kind === 'runtime') {
+        return canOpenWorkspaceBrowserTabOnRuntime(
           useAppStore.getState(),
           worktreeId,
           sourceOwner.runtimeEnvironmentId
+        )
+      }
+      return (
+        sourceOwner.kind === 'ssh' &&
+        canOpenWorkspaceBrowserTabOnSsh(
+          useAppStore.getState(),
+          worktreeId,
+          sourceOwner.connectionId
         )
       )
     }
@@ -844,7 +882,7 @@ export function useTerminalPaneLifecycle({
       return terminalHttpLinkActionDestinationsFor(
         settingsRef.current,
         sourceOwner,
-        canOpenRuntimeBrowserForPane(paneId)
+        canOpenOwnedBrowserForPane(paneId)
       )
     }
     const getLinkActionContext = (paneId: number): TerminalLinkActionContext | null => {
@@ -948,6 +986,7 @@ export function useTerminalPaneLifecycle({
       onPtyExitRef,
       onAgentExitedRef,
       onPtyErrorRef,
+      onPtyErrorClearedRef,
       onPaneProcessDied,
       onPtyRecoveryStateRef,
       clearTabPtyId,
@@ -967,7 +1006,9 @@ export function useTerminalPaneLifecycle({
       dispatchNotification,
       setCacheTimerStartedAt,
       syncPanePtyLayoutBinding,
+      syncPanePtyLayoutBindingForLeaf,
       clearExitedPanePtyLayoutBinding,
+      clearExitedPanePtyLayoutBindingForLeaf,
       onStartupBound,
       deferPtyInput: (paneId, data, forward) => {
         const suppression = httpLinkClickFallbackDisposables.get(paneId)?.ptyMouseSuppression
@@ -1001,7 +1042,7 @@ export function useTerminalPaneLifecycle({
         ...terminalUrlOpenHintOptionsFor(
           settingsRef.current,
           getHttpLinkSourceOwnerForPane(paneId),
-          canOpenRuntimeBrowserForPane(paneId)
+          canOpenOwnedBrowserForPane(paneId)
         ),
         showActions: settingsRef.current?.terminalLinkActionPopoverEnabled !== false
       })
@@ -1067,6 +1108,7 @@ export function useTerminalPaneLifecycle({
           ? installTerminalImeLinuxCandidateState(pane.terminal.element)
           : null
         const imeCompositionTracker = installTerminalImeCompositionTracker(pane.terminal.element)
+        const imeComposerPlaceholderMask = installTerminalImeComposerPlaceholderMask(pane.terminal)
         // Why after the tracker: the preedit stops propagation on `input` while
         // a syllable is held, so anything on this element that needs those
         // events has to be registered ahead of it. Nothing does today — the
@@ -1082,6 +1124,7 @@ export function useTerminalPaneLifecycle({
           : null
         imeCompositionDisposablesRef.current.set(pane.id, {
           dispose: () => {
+            imeComposerPlaceholderMask.dispose()
             imeCompositionTracker.dispose()
             linuxImeCandidateState?.dispose()
             iosHangulPreedit?.dispose()
@@ -1499,11 +1542,14 @@ export function useTerminalPaneLifecycle({
         if (leafId && isRetiredSurface) {
           retireMountedTerminalPaneSurface({
             paneKey: makePaneKey(tabId, leafId),
+            leafId,
             paneId,
             tabId,
             ptyId: closedPtyId,
             retireAgentPaneAuthority: useAppStore.getState().retireAgentPaneAuthority,
             syncPanePtyLayoutBinding,
+            syncPanePtyLayoutBindingForLeaf,
+            clearExitedPanePtyLayoutBindingForLeaf,
             clearTabPtyId,
             ...(transport ? { transport } : {})
           })
@@ -1526,7 +1572,13 @@ export function useTerminalPaneLifecycle({
             )
             if (ptyId) {
               // Why: PaneManager already promoted the sibling; suppress this exit so the survivor isn't mistaken for an exited tab.
-              syncPanePtyLayoutBinding(paneId, null)
+              if (leafId && clearExitedPanePtyLayoutBindingForLeaf) {
+                clearExitedPanePtyLayoutBindingForLeaf(leafId, ptyId)
+              } else if (leafId) {
+                syncPanePtyLayoutBindingForLeaf?.(leafId, null, paneId)
+              } else {
+                syncPanePtyLayoutBinding(paneId, null)
+              }
               clearTabPtyId(tabId, ptyId)
             }
             transport.destroy?.()
@@ -1831,49 +1883,50 @@ export function useTerminalPaneLifecycle({
     scheduleRuntimeGraphSync()
 
     // Why: deliver the startup command via the PTY connection path (waits for shell readiness), not terminal.paste() which can lose input before the shell reads stdin.
-    function onCliSplitPane(event: Event): void {
-      const detail = (event as CustomEvent<SplitTerminalPaneDetail>).detail
-      if (!detail?.tabId || detail.tabId !== tabId) {
-        return
-      }
-      const mgr = managerRef.current
-      if (!mgr) {
-        return
-      }
-      if (detail.newLeafId && mgr.getNumericIdForLeaf(detail.newLeafId) !== null) {
-        return
-      }
-      const sourcePaneId = detail.sourceLeafId
-        ? (mgr.getNumericIdForLeaf(detail.sourceLeafId) ?? detail.paneRuntimeId)
-        : detail.paneRuntimeId
-      if (sourcePaneId < 0) {
-        return
-      }
-      const splitOptions = {
-        ...(detail.newLeafId ? { leafId: detail.newLeafId } : {}),
-        ...(detail.ptyId ? { ptyId: detail.ptyId } : {})
-      }
-      if (detail.command) {
-        const createdPane = splitPaneWithOneShotStartup(ptyDeps, { command: detail.command }, () =>
-          mgr.splitPane(sourcePaneId, detail.direction, splitOptions)
+    const unregisterTerminalPaneSplitRequestHandler = registerTerminalPaneSplitRequestHandler(
+      tabId,
+      worktreeId,
+      (detail) => {
+        const mgr = managerRef.current
+        if (!mgr) {
+          return
+        }
+        if (detail.newLeafId && mgr.getNumericIdForLeaf(detail.newLeafId) !== null) {
+          return
+        }
+        const sourcePaneId = resolveTerminalPaneSplitSourceId(detail, (leafId) =>
+          mgr.getNumericIdForLeaf(leafId)
         )
-        recordRuntimeCreatedTerminalPaneSplit(createdPane, {
-          source: detail.telemetrySource ?? 'command',
-          direction: detail.direction
-        })
-      } else {
-        const createdPane = mgr.splitPane(sourcePaneId, detail.direction, splitOptions)
-        const telemetrySuppressed = createdPane
-          ? consumePendingWebRuntimeSplitMirrorTelemetry(detail.sourcePtyId, detail.direction)
-          : false
-        recordRuntimeCreatedTerminalPaneSplit(createdPane, {
-          source: detail.telemetrySource ?? 'command',
-          direction: detail.direction,
-          telemetrySuppressed
-        })
+        if (sourcePaneId < 0) {
+          return
+        }
+        const splitOptions = {
+          ...(detail.newLeafId ? { leafId: detail.newLeafId } : {}),
+          ...(detail.ptyId ? { ptyId: detail.ptyId } : {})
+        }
+        if (detail.command) {
+          const createdPane = splitPaneWithOneShotStartup(
+            ptyDeps,
+            { command: detail.command },
+            () => mgr.splitPane(sourcePaneId, detail.direction, splitOptions)
+          )
+          recordRuntimeCreatedTerminalPaneSplit(createdPane, {
+            source: detail.telemetrySource ?? 'command',
+            direction: detail.direction
+          })
+        } else {
+          const createdPane = mgr.splitPane(sourcePaneId, detail.direction, splitOptions)
+          const telemetrySuppressed = createdPane
+            ? consumePendingWebRuntimeSplitMirrorTelemetry(detail.sourcePtyId, detail.direction)
+            : false
+          recordRuntimeCreatedTerminalPaneSplit(createdPane, {
+            source: detail.telemetrySource ?? 'command',
+            direction: detail.direction,
+            telemetrySuppressed
+          })
+        }
       }
-    }
-    window.addEventListener(SPLIT_TERMINAL_PANE_EVENT, onCliSplitPane)
+    )
 
     // Why: CLI-driven pane close goes via CustomEvent so PaneManager promotes a sibling; the last pane falls back to closing the tab.
     function onCliClosePane(event: Event): void {
@@ -1916,12 +1969,15 @@ export function useTerminalPaneLifecycle({
     window.addEventListener(CLOSE_TERMINAL_PANE_EVENT, onCliClosePane)
 
     return () => {
-      window.removeEventListener(SPLIT_TERMINAL_PANE_EVENT, onCliSplitPane)
+      unregisterTerminalPaneSplitRequestHandler()
       window.removeEventListener(CLOSE_TERMINAL_PANE_EVENT, onCliClosePane)
       const currentWorktreeTabs = useAppStore.getState().tabsByWorktree[worktreeId]
       const tabStillExists = Boolean(
         currentWorktreeTabs?.some((candidate) => candidate.id === tabId)
       )
+      if (!tabStillExists) {
+        cancelQueuedTerminalPaneSplitRequests(tabId, worktreeId)
+      }
       unregisterRuntimeTab()
       if (resizeRaf !== null) {
         cancelAnimationFrame(resizeRaf)

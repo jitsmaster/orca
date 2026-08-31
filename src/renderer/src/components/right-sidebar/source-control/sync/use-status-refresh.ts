@@ -68,7 +68,7 @@ export function useSourceControlStatusRefresh({
           setUpstreamStatus,
           fetchUpstreamStatus
         },
-        ...(signal ? { request: { signal } } : {})
+        request: { admissionTier: 'interactive', ...(signal ? { signal } : {}) }
       })
     },
     [

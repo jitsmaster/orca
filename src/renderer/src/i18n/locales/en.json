@@ -450,7 +450,12 @@
               "meta": {
                 "persist": {
                   "877e3638d8": "Update the remote runtime to change this workspace’s linked issue",
-                  "4367540861": "Update the remote runtime to link Linear issues"
+                  "4367540861": "Update the remote runtime to link Linear issues",
+                  "github": {
+                    "pr": {
+                      "suppression": "Update the remote runtime to unlink GitHub pull requests"
+                    }
+                  }
                 }
               }
             }
@@ -472,7 +477,9 @@
           "15cf5319ec": "{{path}} was checked on {{hostName}}, but that host did not report a usable folder.",
           "2dcd706774": "Project also exists in another profile",
           "presenceProfileOverflow": "{{names}} +{{count}} more",
-          "removeProjectFailed": "Failed to remove project"
+          "removeProjectFailed": "Failed to remove project",
+          "wslFilesystemBoundaryTitle": "This project is stored on a Windows drive",
+          "wslFilesystemBoundaryDescription": "Git for this project runs in {{distro}}, which reaches Windows drives over the WSL filesystem bridge. Expect git to be roughly 20x slower than it would be on a copy stored inside {{distro}}."
         },
         "settings": {
           "e12dab333b": "Failed to switch servers",
@@ -3896,6 +3903,16 @@
             "onDescription": "Keep this computer awake continuously",
             "autoDescription": "Stay awake while an agent is working",
             "offDescription": "Allow normal system sleep behavior"
+          },
+          "RuntimeHostStatusRow": {
+            "previous_connection_closed": "The previous connection closed",
+            "workspace_window_closed": "The workspace window is closed",
+            "checking_host": "Orca is checking whether this host is reachable",
+            "restoring_connection": "Orca is trying to restore the connection",
+            "host_unreachable": "Orca isn’t reachable on this host",
+            "contact_note": "The host may still be running; only the Orca connection is unavailable.",
+            "last_connected": "Last connected {{value0}}",
+            "reconnect_attempt": "Attempt {{value0}}"
           }
         }
       },
@@ -5415,6 +5432,7 @@
           "eace1d2cf6": "neutral",
           "dbe2d18972": "More {{value0}} actions",
           "ae76907ca6": "Unlink {{value0}}",
+          "openInOrcaBrowser": "Open in Orca browser",
           "ad25c3ff05": "View on {{value0}}",
           "2c67730e07": "Open in Orca",
           "e42941631a": "View on Linear",
@@ -7908,7 +7926,9 @@
           "3f67e8078a": "Use this computer by default. Choose a saved server only when you want supported projects, files, terminals, provider checks, and browser/mobile handoff to run through that server.",
           "2c85efb3e8": "Selecting a saved server makes this browser use that paired Orca runtime as its default Host.",
           "serverConnected": "Connected",
+          "serverWorkspaceWindowClosed": "Workspace window closed",
           "serverChecking": "Checking…",
+          "serverReconnecting": "Reconnecting",
           "serverDisconnected": "Disconnected",
           "disconnectedServer": "Disconnected from {{value0}}.",
           "connectToRemoteServers": "Connect to remote servers",
@@ -8240,7 +8260,11 @@
           "8a349e3fac": "Passphrase for {{value0}}",
           "cab3d5f5a5": "Password for {{value0}}",
           "1f3dde805d": "SSH Key Passphrase",
-          "106bd57f4a": "SSH Password"
+          "106bd57f4a": "SSH Password",
+          "a21f9e74c0": "SSH Verification",
+          "981352fb42": "Complete the verification challenge for",
+          "456516603b": "Enter response",
+          "c624f64b86": "Continue"
         },
         "SshTargetCard": {
           "a883f5a00f": "terminal timeout: {{value0}}",
@@ -13852,6 +13876,30 @@
           },
           "feature": {
             "wall": {
+              "setup": {
+                "checklist": {
+                  "localized": {
+                    "copy": {
+                      "ec0a363633": "Multi-task",
+                      "62bac8f43c": "Work in 2 different worktrees at once. Each one is isolated (even in the same project). Perfect for working on 2 features at once.",
+                      "908898c3ee": "Use Orca's browser",
+                      "43781563c3": "Browse your web app without leaving Orca. Grab any element and send its exact source and styles to an agent with one click.",
+                      "29aa2c2077": "Turn on notifications",
+                      "71bd9a8c95": "Know the moment an agent finishes, needs attention, or gets blocked.",
+                      "46db810da8": "Choose your default agent",
+                      "b8e5bae17f": "Start new work faster with your preferred agent already selected.",
+                      "fee5557b02": "Enable Orca CLI",
+                      "7bcb4097fa": "Register the Orca shell command and install agent skills for browser, computer, and orchestration workflows.",
+                      "ad342dd4c6": "Connect integrations",
+                      "06fe30fdb0": "Start an agent from a task in one click and keep PR status in view.",
+                      "eddc532e58": "Automate workspace setup",
+                      "56049b74c2": "Run install and setup commands automatically so every new worktree is ready for agents.",
+                      "2cf795433b": "Start work in multiple repos",
+                      "42525ba8a4": "Bring your key repos into Orca so you can start agent work without hunting for folders."
+                    }
+                  }
+                }
+              },
               "usage": {
                 "tracking": {
                   "b94ec70eda": "Tracking not set up",
@@ -14216,8 +14264,9 @@
           "7e7ca60816": "changed files",
           "b6c3b84476": "Show file tree",
           "39f8007549": "Review conflicts",
-          "39e73e7181": "were excluded from this diff view.",
-          "689b99f8ad": "unresolved conflict",
+          "skippedConflictsExcluded": "{{count}} unresolved conflicts were excluded from this diff view.",
+          "skippedConflictsExcluded_one": "{{count}} unresolved conflict was excluded from this diff view.",
+          "skippedConflictsExcluded_other": "{{count}} unresolved conflicts were excluded from this diff view.",
           "820ec01f24": "Conflicted files are reviewed separately",
           "fd8892b120": "No changes to display",
           "eb5f40e49c": "This diff view excludes unresolved conflicts because the normal two-way diff pipeline is not conflict-safe.",
@@ -14849,7 +14898,12 @@
           "allowDirectory": "Allow folder",
           "directoryAccessRequestOverflow": "{{folders}}, and {{count}} more",
           "directoryAccessRequestMultiple": "This preview wants to read files in {{folders}}.",
-          "allowDirectories": "Allow {{count}} folders"
+          "allowDirectories": "Allow {{count}} folders",
+          "editAddressControl": "Edit address"
+        },
+        "LargeDiffLoadPrompt": {
+          "a0af0198aa": "Large diffs are not rendered by default.",
+          "f7fa7a40d0": "Load diff"
         }
       },
       "diff": {
@@ -15238,6 +15292,18 @@
                   }
                 }
               }
+            },
+            "browser": {
+              "page": {
+                "annotation": {
+                  "tray": {
+                    "09a7c1df70": "Edit annotation {{value0}}",
+                    "c16f932cb3": "Save",
+                    "024467ceac": "Cancel",
+                    "449d2c2629": "Annotation intent"
+                  }
+                }
+              }
             }
           },
           "navigate": {
@@ -15388,7 +15454,7 @@
           "53fc5f07ab": "Run history",
           "a00e38d1a3": "n/a",
           "fdb3caa8fb": "known",
-          "historyUnavailable": "Run history could not be loaded for this automation."
+          "historyUnavailable": "Run history is unavailable from this host. This does not mean the automation failed or has no runs."
         },
         "AutomationRunPageFrame": {
           "40a511bed4": "Run context",
@@ -15710,7 +15776,7 @@
         },
         "capturedOwner": {
           "orphan": "This automation has no host to run on. Delete it, or re-add the host it belongs to.",
-          "unfenced": "This host cannot confirm which automation it is changing, so this automation is read-only here."
+          "unfenced": "Orca on this host needs an update before you can view run history or manage this automation. Scheduled runs may still continue on the host."
         },
         "hostStatus": {
           "authority": {
@@ -16167,7 +16233,15 @@
         "allWorkspacesTitle": "Select one workspace",
         "allWorkspacesBody": "Status, assignee, and label filters use ids from a single Linear workspace. Choose one workspace to filter by those attributes.",
         "optionsFromTeam": "Options from {{team}}",
-        "clearAll": "Clear all filters"
+        "clearAll": "Clear all filters",
+        "partialCoverage": "partial",
+        "partialCoverageTitle": "Some teams may be left out of this filter. Open Filters for details."
+      },
+      "linear-issue-attribute-filter-coverage-notice": {
+        "statusPartialTeamCoverage": "Filtering {{value0}} of {{value1}} team statuses — issues from the remaining teams are not included.",
+        "labelsPartialTeamCoverage": "Filtering {{value0}} of {{value1}} team labels — issues from the remaining teams are not included.",
+        "statusAtIdLimit": "Filtering the most this can carry: {{value0}} team statuses. Rows picked past that are left out.",
+        "labelsAtIdLimit": "Filtering the most this can carry: {{value0}} team labels. Rows picked past that are left out."
       },
       "linear-issue-attribute-filter-sections": {
         "status": "Status",
@@ -16176,6 +16250,7 @@
         "unassigned": "Unassigned",
         "labels": "Labels",
         "countSelected": "{{count}} selected",
+        "partialCoverageMarker": "· partial",
         "selected": "selected",
         "searchPriority": "Filter priority…",
         "searchStatus": "Filter status…",
@@ -16409,6 +16484,10 @@
           "externalLinkConfirm": "Open link",
           "externalLinkCancel": "Cancel"
         }
+      },
+      "HostedReviewUnlinkMenuItem": {
+        "label": "Unlink {{value0}} from workspace",
+        "description": "Orca will hide {{value0}} {{value1}} details for this workspace. The {{value0}} and branch on {{value2}} won’t be changed."
       }
     },
     "i18n": {
@@ -16476,6 +16555,11 @@
     }
   },
   "components": {
+    "jiraUserPicker": {
+      "select": "Select {{value0}}",
+      "search": "Search users",
+      "empty": "No users found"
+    },
     "native-chat": {
       "composer": {
         "imageUnsupported": "Image paste is not supported for this agent.",
@@ -16534,7 +16618,11 @@
           "ultra": "Ultra",
           "on": "On",
           "off": "Off"
-        }
+        },
+        "pendingAttachmentLimit": "Too many attachments are waiting. Finish composing before attaching more.",
+        "viewAttachment": "View image",
+        "imagePreview": "Full-size image preview",
+        "imagePreviewUnavailable": "Preview unavailable"
       },
       "tool": {
         "running": "Running…",
@@ -17089,5 +17177,17 @@
   },
   "quickOpen": {
     "moreMatchesAvailable": "More matches may be available. Refine your search to narrow the results."
+  },
+  "checksPanel": {
+    "unlinked": {
+      "title": "Pull request unlinked",
+      "description": "PR #{{number}} is hidden for this workspace. Link it again to restore checks and review details.",
+      "relink": "Link PR #{{number}}"
+    }
+  },
+  "sourceControl": {
+    "unlinkedPr": {
+      "status": "PR #{{number}} unlinked"
+    }
   }
 }
