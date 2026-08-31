@@ -6,12 +6,14 @@ import {
   hasDismissedHugeRepoWarning,
   markHugeRepoWarningDismissed
 } from '@/lib/source-control-huge-repo-warning-dismissals'
+import { installWindowVisibilityInterval } from '@/lib/window-visibility-interval'
 import { translate } from '@/i18n/i18n'
 import type { RuntimeGitContext } from '@/runtime/runtime-git-client'
 import { useAppStore } from '@/store'
 import type { GitPushTarget } from '../../../../../../shared/worktree/types'
 import type { PullRequestGenerationContext } from '@/store/slices/pull-request-generation'
 import { refreshGitStatusForWorktree } from '../../git-status-refresh'
+import { BRANCH_REFRESH_INTERVAL_MS } from './use-branch-compare'
 
 export type SourceControlStatusRefresh = {
   refreshActiveGitStatus: (signal?: AbortSignal) => Promise<void>
@@ -90,7 +92,9 @@ export function useSourceControlStatusRefresh({
   }, [refreshActiveGitStatus])
 
   // Why: the global status poller only refreshes the app-active worktree; a viewed non-active
-  // worktree gets one refresh when the picker lands on it so its changes appear immediately.
+  // worktree gets an immediate refresh when the picker lands on it, then keeps polling on the same
+  // cadence as branch compare so its changes/untracked files don't go stale while left in view
+  // (e.g. an agent still editing files there).
   useEffect(() => {
     if (
       !activeWorktreeId ||
@@ -100,7 +104,10 @@ export function useSourceControlStatusRefresh({
     ) {
       return
     }
-    void refreshActiveGitStatus()
+    return installWindowVisibilityInterval({
+      run: () => void refreshActiveGitStatus(),
+      intervalMs: BRANCH_REFRESH_INTERVAL_MS
+    })
   }, [activeWorktreeId, appActiveWorktreeId, isFolder, refreshActiveGitStatus, worktreePath])
 
   // Why: when status is truncated, offer once per worktree to .gitignore the flooding folder; local-only since the SSH huge-folder write path isn't wired.
