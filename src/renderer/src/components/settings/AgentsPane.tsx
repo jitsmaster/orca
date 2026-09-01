@@ -7,6 +7,7 @@ import { useDetectedAgents, type AgentDetectionTarget } from '@/hooks/useDetecte
 import { useAppStore } from '@/store'
 import { AgentAwakeSetting } from './AgentAwakeSetting'
 import { AgentCacheTimerSection } from './AgentCacheTimerSection'
+import { IdleAgentCleanupSection } from './IdleAgentCleanupSection'
 import { AgentRuntimeSetting } from './AgentRuntimeSetting'
 import { buildCodexSessionSourceHomeControl } from './codex-session-source-home-control'
 import {
@@ -260,6 +261,7 @@ export function AgentsPane({
         <AgentAwakeSetting settings={settings} updateSettings={updateSettings} />
       ) : null}
       <AgentCacheTimerSection settings={settings} updateSettings={updateSettings} />
+      <IdleAgentCleanupSection settings={settings} updateSettings={updateSettings} />
       <AgentPermissionsSetting
         mode={resolveAgentPermissionModeSummary({ agentDefaultArgs, agentDefaultEnv })}
         onChange={(mode) =>
