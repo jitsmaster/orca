@@ -156,6 +156,7 @@ import {
   configureOrcaUserDataPathEnv,
   disableUnsupportedChromiumFeatures,
   optOutOfHiddenPageWakeUpThrottling,
+  optOutOfWindowsNativeOcclusionTracking,
   enableMainProcessGpuFeatures,
   installDevParentDisconnectQuit,
   installDevParentSignalQuit,
@@ -1012,6 +1013,7 @@ if (hasSingleInstanceLock) {
   disableUnsupportedChromiumFeatures()
   // Why: unconditional — a GPU-fallback launch skips enableMainProcessGpuFeatures() below.
   optOutOfHiddenPageWakeUpThrottling()
+  optOutOfWindowsNativeOcclusionTracking()
   configureElectronNetworkCompatibility()
   enableRendererHeapHeadroom()
   maybeApplyGpuFallbackForThisLaunch()
