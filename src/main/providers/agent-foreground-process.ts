@@ -5,6 +5,7 @@ import {
   getProcessTableSnapshot,
   type ProcessTableRow
 } from '../../shared/process-table-snapshot'
+import { recordPaneDescendantObservation } from '../idle-agent-cleanup/pane-descendant-observation'
 import {
   resolveWindowsAgentForegroundProcessWithAvailability,
   shouldInspectWindowsAgentForeground,
@@ -178,6 +179,9 @@ export async function resolveAgentForegroundProcessWithAvailability(
     const rows = options.fresh
       ? await getFreshProcessTableSnapshot()
       : await getProcessTableSnapshot()
+    if (options.paneId) {
+      recordPaneDescendantObservation(options.paneId, shellPid, rows)
+    }
     if (options.fresh && !rows.some((row) => row.pid === shellPid)) {
       return { available: false, processName: fallbackProcess }
     }

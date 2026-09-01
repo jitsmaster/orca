@@ -51,6 +51,8 @@ export type WindowsPaneProcessInventory = {
    * descendant walk yet can still hold a recycled anchor pid.
    */
   anchorRow: WindowsProcessRow | null
+  /** Full-table row for `rootPid` (the pane's shell) — feeds the idle-agent-cleanup pane-lineage fallback. */
+  rootRow: WindowsProcessRow | null
 }
 
 export async function queryWindowsPaneProcessInventory(
@@ -69,7 +71,8 @@ export async function queryWindowsPaneProcessInventory(
   }
   // Why: a snapshot that omitted the PTY root may be stale or permission-
   // filtered; only an observed root can authoritatively have no descendants.
-  if (!rows.some((row) => row.pid === rootPid)) {
+  const rootRow = rows.find((row) => row.pid === rootPid) ?? null
+  if (!rootRow) {
     return null
   }
   return {
@@ -77,7 +80,8 @@ export async function queryWindowsPaneProcessInventory(
     anchorRow:
       options.anchorPid !== undefined
         ? (rows.find((row) => row.pid === options.anchorPid) ?? null)
-        : null
+        : null,
+    rootRow
   }
 }
 

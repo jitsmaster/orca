@@ -2,6 +2,7 @@ import type * as pty from 'node-pty'
 import type { PhysicalExitTracker } from '../../shared/physical-exit-tracker'
 import type { PtyStartupIngress } from '../../shared/pty-startup-ingress'
 import type { TerminalExitCause } from '../../shared/terminal-exit-cause'
+import { retainDescendantsOnPaneClose } from '../idle-agent-cleanup/pane-close-descendant-retention'
 import { normalizeLocalCallerSessionId } from './local-pty-launch-helpers'
 
 export type PtyShutdownOperation = {
@@ -109,6 +110,12 @@ export function runPtyCleanup(id: string): void {
  * Removes all local tracking state for a PTY id after teardown.
  */
 export function clearPtyState(id: string): void {
+  const proc = ptyProcesses.get(id)
+  if (proc) {
+    // Fire-and-forget: pane teardown is synchronous and must not block on a
+    // process-table scan for the idle-agent-cleanup grace-period retention.
+    void retainDescendantsOnPaneClose(id, proc.pid).catch(() => {})
+  }
   clearLocalPtyForceKillTimer(id)
   runPtyCleanup(id)
   disposePtyListeners(id)

@@ -10,6 +10,15 @@ import {
   shouldInspectOuterWrapperForegroundProcess
 } from '../../shared/foreground-wrapper-agent'
 import { isShellProcess } from '../../shared/shell-process-detection'
+import { recordPaneDescendantObservation } from '../idle-agent-cleanup/pane-descendant-observation'
+import {
+  candidateMatchesContextPath,
+  normalizeContextPaths
+} from './windows-agent-context-path-match'
+import {
+  recognizeWindowsProcessCandidate,
+  windowsCandidateIsAncestor
+} from './windows-process-lineage'
 import {
   queryWindowsPaneProcessInventory,
   type WindowsProcessCandidate,
@@ -20,6 +29,8 @@ export type AgentForegroundResolutionOptions = {
   contextPaths?: readonly string[]
   /** Require a Windows process-table scan started after this request. */
   fresh?: boolean
+  /** Owning pane id, when known — feeds the idle-agent-cleanup descendant-tracking hook. */
+  paneId?: string
   /** Force confirmation scans even when node-pty reports a recognized name. */
   forceProcessScan?: boolean
   /** Lazily proves which global descendants still belong to this ConPTY. */
@@ -83,6 +94,14 @@ export async function resolveWindowsAgentForegroundProcessWithAvailability(
   })
   if (!inventory) {
     return { available: false, processName: null }
+  }
+  if (options.paneId) {
+    recordPaneDescendantObservation(
+      options.paneId,
+      shellPid,
+      inventory.candidates,
+      inventory.rootRow?.command ?? ''
+    )
   }
   const candidates = inventory.candidates
   // Resolve membership before applying the global ambiguity rule. A detached
@@ -259,82 +278,6 @@ function resolveRecognizedWindowsProcessCandidates(
     // Distinct anchors agreeing on one name still leave no single liveness anchor.
     ...(anchorProcessIds.size === 1 ? { processId: [...anchorProcessIds][0] } : {})
   }
-}
-
-function windowsCandidateIsAncestor(
-  candidate: WindowsProcessRow,
-  other: WindowsProcessRow,
-  candidatesByPid: ReadonlyMap<number, WindowsProcessRow>
-): boolean {
-  let current = candidatesByPid.get(other.ppid)
-  while (current) {
-    if (current.pid === candidate.pid) {
-      return true
-    }
-    current = candidatesByPid.get(current.ppid)
-  }
-  return false
-}
-
-function normalizeContextPaths(contextPaths: readonly string[] | undefined): string[] {
-  const normalized = new Set<string>()
-  for (const contextPath of contextPaths ?? []) {
-    const candidate = normalizePathForCommandMatch(contextPath)
-    if (isSafeContextPath(candidate)) {
-      normalized.add(candidate)
-    }
-  }
-  return [...normalized].sort((a, b) => b.length - a.length)
-}
-
-function isSafeContextPath(contextPath: string): boolean {
-  return contextPath.length >= 4 && (/^[a-z]:\//.test(contextPath) || contextPath.startsWith('//'))
-}
-
-function candidateMatchesContextPath(
-  candidate: WindowsProcessRow,
-  normalizedContextPaths: readonly string[]
-): boolean {
-  if (normalizedContextPaths.length === 0) {
-    return false
-  }
-  const haystack = normalizePathForCommandMatch(candidate.command)
-  return normalizedContextPaths.some((contextPath) =>
-    commandLineContainsPath(haystack, contextPath)
-  )
-}
-
-function normalizePathForCommandMatch(value: string): string {
-  return value
-    .trim()
-    .replace(/^["']|["']$/g, '')
-    .replace(/\\/g, '/')
-    .replace(/\/+$/g, '')
-    .toLowerCase()
-}
-
-function commandLineContainsPath(haystack: string, contextPath: string): boolean {
-  let index = haystack.indexOf(contextPath)
-  while (index !== -1) {
-    const before = index > 0 ? haystack[index - 1] : ''
-    const after = haystack[index + contextPath.length] ?? ''
-    const beforeOk = !before || /[\s"'(=]/.test(before)
-    const afterOk = !after || after === '/' || /[\s"'),;]/.test(after)
-    if (beforeOk && afterOk) {
-      return true
-    }
-    index = haystack.indexOf(contextPath, index + 1)
-  }
-  return false
-}
-
-function recognizeWindowsProcessCandidate(
-  candidate: WindowsProcessRow
-): RecognizedAgentProcess | null {
-  return (
-    recognizeAgentProcessFromCommandLine(candidate.command) ??
-    recognizeAgentProcessFromCommandLine(candidate.name)
-  )
 }
 
 function windowsCandidateMatchesFallbackWrapper(

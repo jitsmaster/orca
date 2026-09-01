@@ -138,6 +138,7 @@ export function createPtyForegroundProcessTracker(args: {
     const anchor = cachedAgentForeground
     void resolveAgentForegroundProcessWithAvailability(proc.pid, fallbackProcess, {
       contextPaths,
+      paneId: args.sessionId,
       ...(anchor?.pid != null
         ? { anchorProcessId: anchor.pid, anchorProcessName: anchor.processName }
         : {})
@@ -279,6 +280,7 @@ export function createPtyForegroundProcessTracker(args: {
           fallbackProcess,
           {
             contextPaths,
+            paneId: args.sessionId,
             fresh: true,
             ...(process.platform === 'win32'
               ? {
