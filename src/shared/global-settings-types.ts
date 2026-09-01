@@ -280,6 +280,12 @@ export type GlobalSettings = {
   promptCacheTimerEnabled: boolean
   /** Prompt-cache TTL (ms); only 300000 (5 min standard) or 3600000 (1 hr, extended-TTL plans). */
   promptCacheTtlMs: number
+  /** Whether Orca periodically kills idle agent-owned processes with no active
+   *  work. Off by default: the feature auto-kills processes with no confirmation
+   *  gate, so it must not silently start on upgrade for existing users. */
+  idleAgentCleanupEnabled: boolean
+  /** How often (ms) the idle-agent-cleanup scan runs while enabled. */
+  idleAgentCleanupIntervalMs: number
   /** Why: durable main-owned pref so Orca can prepare shared ~/.codex before the renderer hydrates. */
   codexManagedAccounts: CodexManagedAccount[]
   activeCodexManagedAccountId: string | null

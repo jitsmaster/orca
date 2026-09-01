@@ -161,6 +161,8 @@ export function buildDefaultSettings(args: {
     prBotAuthorOverrides: [],
     promptCacheTimerEnabled: false,
     promptCacheTtlMs: 300_000,
+    idleAgentCleanupEnabled: false,
+    idleAgentCleanupIntervalMs: 300_000,
     codexManagedAccounts: [],
     activeCodexManagedAccountId: null,
     activeCodexManagedAccountIdsByRuntime: { host: null, wsl: {} },
