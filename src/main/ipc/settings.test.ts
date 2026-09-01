@@ -396,6 +396,58 @@ describe('registerSettingsHandlers', () => {
     expect(agentAwakeService.setMode).not.toHaveBeenCalled()
   })
 
+  it('reschedules the idle agent cleanup timer when the enabled setting changes', () => {
+    const idleAgentCleanupScheduler = { onSettingsChanged: vi.fn() }
+    store.getSettings.mockReturnValue({ idleAgentCleanupEnabled: false })
+    store.updateSettings.mockReturnValue({ idleAgentCleanupEnabled: true })
+    registerSettingsHandlers(store as never, undefined, idleAgentCleanupScheduler as never)
+
+    const handler = handleMock.mock.calls.find((call) => call[0] === 'settings:set')?.[1] as (
+      _event: unknown,
+      args: unknown
+    ) => unknown
+
+    handler(settingsInvokeEvent, { idleAgentCleanupEnabled: true })
+
+    expect(idleAgentCleanupScheduler.onSettingsChanged).toHaveBeenCalledWith([
+      'idleAgentCleanupEnabled'
+    ])
+  })
+
+  it('reschedules the idle agent cleanup timer when the interval setting changes', () => {
+    const idleAgentCleanupScheduler = { onSettingsChanged: vi.fn() }
+    store.getSettings.mockReturnValue({ idleAgentCleanupIntervalMs: 300_000 })
+    store.updateSettings.mockReturnValue({ idleAgentCleanupIntervalMs: 60_000 })
+    registerSettingsHandlers(store as never, undefined, idleAgentCleanupScheduler as never)
+
+    const handler = handleMock.mock.calls.find((call) => call[0] === 'settings:set')?.[1] as (
+      _event: unknown,
+      args: unknown
+    ) => unknown
+
+    handler(settingsInvokeEvent, { idleAgentCleanupIntervalMs: 60_000 })
+
+    expect(idleAgentCleanupScheduler.onSettingsChanged).toHaveBeenCalledWith([
+      'idleAgentCleanupIntervalMs'
+    ])
+  })
+
+  it('does not notify the idle agent cleanup scheduler for unrelated setting changes', () => {
+    const idleAgentCleanupScheduler = { onSettingsChanged: vi.fn() }
+    store.getSettings.mockReturnValue({ idleAgentCleanupEnabled: false })
+    store.updateSettings.mockReturnValue({ idleAgentCleanupEnabled: false })
+    registerSettingsHandlers(store as never, undefined, idleAgentCleanupScheduler as never)
+
+    const handler = handleMock.mock.calls.find((call) => call[0] === 'settings:set')?.[1] as (
+      _event: unknown,
+      args: unknown
+    ) => unknown
+
+    handler(settingsInvokeEvent, { defaultTuiAgent: 'codex' })
+
+    expect(idleAgentCleanupScheduler.onSettingsChanged).not.toHaveBeenCalled()
+  })
+
   it('prepares local worktree roots when workspace directory changes', async () => {
     store.getSettings.mockReturnValue({ workspaceDir: '/old/workspaces', nestWorkspaces: false })
     store.updateSettings.mockReturnValue({ workspaceDir: '/new/workspaces', nestWorkspaces: false })

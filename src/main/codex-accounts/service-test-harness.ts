@@ -108,6 +108,8 @@ export function createSettings(overrides: Partial<GlobalSettings> = {}): GlobalS
     },
     promptCacheTimerEnabled: false,
     promptCacheTtlMs: 300_000,
+    idleAgentCleanupEnabled: false,
+    idleAgentCleanupIntervalMs: 300_000,
     codexManagedAccounts: [],
     activeCodexManagedAccountId: null,
     claudeManagedAccounts: [],

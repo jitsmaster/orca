@@ -87,6 +87,8 @@ export function createSettings(overrides: TestSettingsOverrides = {}): GlobalSet
     },
     promptCacheTimerEnabled: false,
     promptCacheTtlMs: 300_000,
+    idleAgentCleanupEnabled: false,
+    idleAgentCleanupIntervalMs: 300_000,
     codexManagedAccounts: [],
     activeCodexManagedAccountId: null,
     claudeManagedAccounts: [],

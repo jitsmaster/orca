@@ -10,6 +10,7 @@ import { rebuildAppMenu } from '../menu/register-app-menu'
 import { track } from '../telemetry/client'
 import { SETTINGS_CHANGED_WHITELIST, type SettingsChangedKey } from '../../shared/telemetry-events'
 import type { AgentAwakeService } from '../agent-awake-service'
+import type { IdleAgentCleanupScheduler } from '../idle-agent-cleanup/idle-agent-cleanup-scheduler'
 import { sanitizeFloatingWorkspaceDirectorySetting } from './floating-workspace-directory'
 import { applyAgentStatusHooksEnabled } from '../agent-hooks/managed-agent-hook-controls'
 import { recordManagedHookInstallFailure } from '../agent-hooks/install-telemetry'
@@ -70,7 +71,8 @@ const APPEARANCE_MENU_KEYS: readonly (keyof GlobalSettings)[] = [
 
 export function registerSettingsHandlers(
   store: Store,
-  agentAwakeService?: AgentAwakeService
+  agentAwakeService?: AgentAwakeService,
+  idleAgentCleanupScheduler?: IdleAgentCleanupScheduler
 ): void {
   ipcMain.handle(
     'agentAwake:getStatus',
@@ -265,6 +267,12 @@ export function registerSettingsHandlers(
     }
     if ('appIcon' in sanitizedArgs && before.appIcon !== result.appIcon) {
       applyAppIcon(result.appIcon)
+    }
+    if (
+      'idleAgentCleanupEnabled' in sanitizedArgs ||
+      'idleAgentCleanupIntervalMs' in sanitizedArgs
+    ) {
+      idleAgentCleanupScheduler?.onSettingsChanged(Object.keys(sanitizedArgs))
     }
 
     // Why: telemetry-plan.md§Settings — fire `settings_changed` only for

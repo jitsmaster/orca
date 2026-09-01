@@ -533,7 +533,7 @@ describe('registerCoreHandlers', () => {
     expect(registerComputerUsePermissionHandlersMock).toHaveBeenCalled()
     expect(registerDashboardPopoutHandlersMock).toHaveBeenCalledWith(store, undefined)
     expect(registerTerminalPreviewHandlersMock).toHaveBeenCalledWith(runtime)
-    expect(registerSettingsHandlersMock).toHaveBeenCalledWith(store, agentAwakeService)
+    expect(registerSettingsHandlersMock).toHaveBeenCalledWith(store, agentAwakeService, undefined)
     expect(registerSkillsHandlersMock).toHaveBeenCalledWith(store, runtime)
     expect(registerSkillDeleteIpcHandlersMock).toHaveBeenCalledWith(store, runtime)
     expect(registerWorkspaceSpaceHandlersMock).toHaveBeenCalledWith(store)
