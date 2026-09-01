@@ -32,6 +32,7 @@ import type { GithubPullRequestApi } from './api/github-pull-request-api'
 import type { GithubWorkItemApi } from './api/github-work-item-api'
 import type { GitLabApi } from './api/gitlab-api'
 import type { BitbucketApi, HostedReviewApi } from './api/hosted-review-api'
+import type { IdleAgentCleanupApi } from './api/idle-agent-cleanup-api'
 import type { JiraApi } from './api/jira-api'
 import type { LinearApi } from './api/linear-api'
 import type { MobileApi } from './api/mobile-api'
@@ -98,6 +99,7 @@ export type PreloadApi = {
   telemetryAcknowledgeBanner: TelemetryApi['telemetryAcknowledgeBanner']
   settings: SettingsApi
   agentAwake: AgentAwakeApi
+  idleAgentCleanup: IdleAgentCleanupApi
   localhostWorktreeLabels: LocalhostWorktreeLabelsApi
   keybindings: KeybindingsApi
   codexAccounts: CodexAccountsApi

@@ -22,6 +22,7 @@ import type { DocPreviewGrantRequest } from './api/doc-preview-api'
 import type { AppIdentity } from '../shared/app-identity'
 import type { MacCapturedDigitRowChord } from '../shared/macos-symbolic-hotkeys'
 import type { ComputerAwakeStatus } from '../shared/computer-awake-mode'
+import type { IdleAgentCleanupLogEntry } from '../shared/idle-agent-cleanup-log-entry'
 import type {
   DashboardRevealAgentArgs,
   DashboardSleepWorkspaceArgs,
@@ -2226,6 +2227,19 @@ const api = {
       return () => ipcRenderer.removeListener('agentAwake:changed', listener)
     }
   } satisfies PreloadApi['agentAwake'],
+
+  idleAgentCleanup: {
+    getRecentActivity: (): Promise<IdleAgentCleanupLogEntry[]> =>
+      ipcRenderer.invoke('idleAgentCleanup:getRecentActivity'),
+    onActivityChanged: (callback: (entries: IdleAgentCleanupLogEntry[]) => void): (() => void) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        entries: IdleAgentCleanupLogEntry[]
+      ): void => callback(entries)
+      ipcRenderer.on('idleAgentCleanup:activityChanged', listener)
+      return () => ipcRenderer.removeListener('idleAgentCleanup:activityChanged', listener)
+    }
+  } satisfies PreloadApi['idleAgentCleanup'],
 
   localhostWorktreeLabels: {
     register: (args: LocalhostWorktreeLabelRoute): Promise<LocalhostWorktreeLabelResult> =>

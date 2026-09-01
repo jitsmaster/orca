@@ -346,6 +346,13 @@ import { createHeadlessAutomationOutputSnapshotBuffer } from './automations/head
 import { buildHeadlessAutomationWorktreeCreateArgs } from './automations/headless-workspace-create'
 import { createRuntimeAutomationRunTerminalObserver } from './automations/runtime-terminal-run-observer'
 import { AgentAwakeService } from './agent-awake-service'
+import { IdleAgentCleanupScheduler } from './idle-agent-cleanup/idle-agent-cleanup-scheduler'
+import { runIdleAgentCleanupTick } from './idle-agent-cleanup/idle-agent-cleanup-candidate-scan'
+import { IdleAgentCleanupLogStore } from './idle-agent-cleanup/idle-agent-cleanup-log-store'
+import {
+  registerIdleAgentCleanupHandlers,
+  createNotifyingIdleAgentCleanupLog
+} from './ipc/idle-agent-cleanup'
 import { normalizeComputerAwakeMode } from '../shared/computer-awake-mode'
 import { registerSystemResumeBroadcast } from './system-resume-broadcast'
 import { settleTeardownWithinDeadline, settleWithinMs } from './quit-teardown-deadline'
@@ -444,6 +451,7 @@ let headlessBrowserDisplayAvailable = false
 
 let starNag: StarNagService | null = null
 let agentAwakeService: AgentAwakeService | null = null
+let idleAgentCleanupScheduler: IdleAgentCleanupScheduler | null = null
 let crashReports: CrashReportStore | null = null
 let unsubscribeAgentAwakeStatusChanges: (() => void) | null = null
 let unsubscribeSystemResumeBroadcast: (() => void) | null = null
@@ -1662,8 +1670,10 @@ function openMainWindow(options: { revealOnDidFinishLoad?: boolean } = {}): Brow
     pluginService ?? undefined,
     pluginMarketplaceService && pluginMarketplaceInstaller
       ? { marketplace: pluginMarketplaceService, installer: pluginMarketplaceInstaller }
-      : undefined
+      : undefined,
+    idleAgentCleanupScheduler ?? undefined
   )
+  registerIdleAgentCleanupHandlers(IdleAgentCleanupLogStore.fromUserData())
   automations.setWebContents(window.webContents)
   automations.start()
   attachMainWindowServices(
@@ -2607,6 +2617,15 @@ void app.whenReady().then(async () => {
   )
   // Why: start from empty — disk-hydrated status rows are UI continuity only; only this runtime's hook events keep the computer awake.
   agentAwakeService.setStatuses([])
+  idleAgentCleanupScheduler = new IdleAgentCleanupScheduler({
+    getSettings: () => store!.getSettings(),
+    runTick: () =>
+      runIdleAgentCleanupTick(
+        store!.getSettings(),
+        createNotifyingIdleAgentCleanupLog(IdleAgentCleanupLogStore.fromUserData())
+      )
+  })
+  idleAgentCleanupScheduler.start()
   const collectChangedProviderSessionWorktrees = createHookProviderSessionInvalidator()
   const publishProviderSessionChanges = (identities: AgentHookProviderSessionIdentity[]): void => {
     const ownedIdentities = identities.map((identity) => ({
@@ -3615,6 +3634,8 @@ app.on('before-quit', () => {
   unsubscribeAgentAwakeStatusChanges = null
   agentAwakeService?.dispose()
   agentAwakeService = null
+  idleAgentCleanupScheduler?.stop()
+  idleAgentCleanupScheduler = null
   // Why: defer PTY cleanup to will-quit so the renderer captures scrollback before PTY-exit events unmount TerminalPane (dropping its capture callbacks).
   rateLimits?.stop()
 })
