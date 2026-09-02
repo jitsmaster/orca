@@ -9,6 +9,7 @@ import type { DaemonSessionBackgroundRouting } from './daemon-session-background
 import { recordDaemonStreamBacklogEvent } from './daemon-stream-backlog-probe'
 import type { DaemonStreamDataBatcher } from './daemon-stream-data-batcher'
 import type { DaemonTerminalAdmission } from './daemon-terminal-admission'
+import { retainedClosedPaneDescendants } from '../idle-agent-cleanup/pane-descendant-tracking-state'
 import type { TerminalHistorySeedTransferRegistry } from './terminal-history-seed-transfer-registry'
 import type { TerminalHost } from './terminal-host'
 import { SessionNotFoundError, type DaemonRequest } from './types'
@@ -136,6 +137,19 @@ export class DaemonRequestRouter {
         )
       case 'ping':
         return { pong: true }
+      case 'getRetainedPaneDescendants':
+        // Why: this daemon process's own in-memory retention map -- Electron main
+        // runs as a separate OS process and can never read it directly, so main's
+        // cleanup scheduler pulls it fresh over RPC each tick instead.
+        return {
+          retained: [...retainedClosedPaneDescendants].map(([paneId, retained]) => ({
+            paneId,
+            descendantPids: [...retained.descendantPids],
+            rootCommandLine: retained.rootCommandLine,
+            shellPid: retained.shellPid,
+            retainedAtMs: retained.retainedAtMs
+          }))
+        }
       case 'systemResolverHealth':
         return { health: await readCurrentProcessMacSystemResolverHealth() }
       case 'ptySpawnHealth':

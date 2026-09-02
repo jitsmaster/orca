@@ -5,12 +5,20 @@ import { forceKillPosixPtyProcessGroups } from '../../pty/posix-pty-process-grou
 import { signalPosixPtyForegroundGroup } from '../../pty/posix-pty-foreground-group'
 import { readPtsName } from '../../pty/node-pty-pts-name'
 import { terminatePtyJob } from '../../windows/windows-pty-job'
+import { retainDescendantsOnPaneClose } from '../../idle-agent-cleanup/pane-close-descendant-retention'
 import { isValidPtySize } from '../daemon-pty-size'
 import type { SubprocessHandle } from '../session-subprocess-handle'
 import { createPtyForegroundProcessTracker } from './foreground-process-tracker'
 import { PtyPreListenerEvents } from './pre-listener-events'
 
 type DisposableNativePty = pty.IPty & { destroy?: () => void }
+
+// Why a module-level map, not per-call state: sessionId is a stable pane-level
+// id that can be respawned onto a brand-new proc before this handle's own
+// async retention scan (below) resolves -- the same risk local-pty-provider-state.ts
+// guards against for local panes. Tracking "the current proc per sessionId"
+// here mirrors that file's `ptyProcesses` map, scoped to this daemon-side path.
+const currentProcBySessionId = new Map<string, pty.IPty>()
 
 export function createDaemonPtySubprocessHandle(args: {
   process: pty.IPty
@@ -24,6 +32,7 @@ export function createDaemonPtySubprocessHandle(args: {
   startupAgentRecognition: RecognizedAgentProcess | null
 }): SubprocessHandle {
   const proc = args.process
+  currentProcBySessionId.set(args.sessionId, proc)
   // node-pty exposes destroy at runtime but omits it from IPty.
   const nativeProc = proc as DisposableNativePty
   const events = new PtyPreListenerEvents()
@@ -53,6 +62,27 @@ export function createDaemonPtySubprocessHandle(args: {
   proc.onExit(() => {
     dead = true
     foreground.markDead()
+    // Why: this daemon-hosted path tracks descendants the same way the local
+    // PTY provider does (foreground-process-tracker.ts passes the same
+    // sessionId as paneId), but had no teardown call into retention at all --
+    // every closed session here leaked its paneObservedDescendants entry for
+    // the life of the process.
+    void retainDescendantsOnPaneClose(
+      args.sessionId,
+      proc.pid,
+      // A respawn under this same stable sessionId replaces the map entry
+      // before this scan resolves; if so, this stale result must not touch
+      // the new occupant's tracking. `undefined` also passes -- this handler
+      // deletes its own entry synchronously below, so "nothing has claimed
+      // this sessionId yet" is the expected, safe case.
+      () => {
+        const current = currentProcBySessionId.get(args.sessionId)
+        return current === undefined || current === proc
+      }
+    ).catch((error) => console.warn('[idle-agent-cleanup] retain-on-close failed', error))
+    if (currentProcBySessionId.get(args.sessionId) === proc) {
+      currentProcBySessionId.delete(args.sessionId)
+    }
     // Why: neutralize kill synchronously so a later async socket-close SIGHUP cannot hit a recycled pid.
     if (process.platform !== 'win32') {
       nativeProc.kill = () => {}

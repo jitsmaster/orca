@@ -7,6 +7,7 @@ export {
   getCurrentDaemonMacTccAttributionHealth,
   getDaemonEndpointFacts,
   getDaemonProvider,
+  listDaemonRetainedPaneDescendants,
   listLiveDaemonPtyIds,
   readDaemonPidRecord,
   replaceDaemonProvider,

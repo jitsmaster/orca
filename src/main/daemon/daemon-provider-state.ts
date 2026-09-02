@@ -11,7 +11,7 @@ import {
   getMacDaemonTccAttributionHealth,
   type MacDaemonTccAttributionHealth
 } from './daemon-tcc-attribution'
-import { PROTOCOL_VERSION } from './types'
+import { PROTOCOL_VERSION, type RetainedPaneDescendantsWireRecord } from './types'
 
 let spawner: DaemonSpawner | null = null
 let adapter: DaemonProvider | null = null
@@ -113,6 +113,30 @@ export async function listLiveDaemonPtyIds(): Promise<string[] | null> {
   return inventories.flatMap((inventory) =>
     inventory.status === 'fulfilled' ? inventory.value.map((process) => process.id) : []
   )
+}
+
+/**
+ * Every live daemon generation's retained closed-pane descendant records, for
+ * idle-agent-cleanup's scheduler tick (Electron main) to merge with its own
+ * local-pty-hosted retention map. Unlike listLiveDaemonPtyIds, one adapter
+ * failing does not blank the whole result -- a partial read still lets the
+ * tick clean up whatever daemon generations did answer, and the caller
+ * degrades to local-pty-only cleanup rather than skipping the tick.
+ */
+export async function listDaemonRetainedPaneDescendants(): Promise<
+  RetainedPaneDescendantsWireRecord[]
+> {
+  if (!adapter) {
+    return []
+  }
+  const adapters =
+    adapter instanceof DaemonPtyRouter || adapter instanceof DegradedDaemonPtyProvider
+      ? adapter.getAllAdapters()
+      : [adapter]
+  const results = await Promise.allSettled(
+    adapters.map((daemonAdapter) => daemonAdapter.getRetainedPaneDescendants())
+  )
+  return results.flatMap((result) => (result.status === 'fulfilled' ? result.value : []))
 }
 
 // Why: keep the module-level adapter and ipc/pty.ts's localProvider in sync so app-quit can't dispose a stale reference.

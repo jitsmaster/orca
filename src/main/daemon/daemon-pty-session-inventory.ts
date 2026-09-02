@@ -11,7 +11,12 @@ import { isMissingWindowsNamedPipeError } from './daemon-endpoint-errors'
 import { DaemonPtyProcessInspection } from './daemon-pty-process-inspection'
 import { remainingDaemonRequestTimeoutMs } from './daemon-request-deadline'
 import { parsePtySessionId } from './pty-session-id'
-import type { ListSessionsResult, SessionInfo } from './types'
+import type {
+  GetRetainedPaneDescendantsResult,
+  ListSessionsResult,
+  RetainedPaneDescendantsWireRecord,
+  SessionInfo
+} from './types'
 import { PtyProcessListAdmission } from '../providers/pty-process-list-admission'
 import type { PtyProcessInfo } from '../providers/types'
 
@@ -131,6 +136,16 @@ export abstract class DaemonPtySessionInventory extends DaemonPtyProcessInspecti
 
   getActiveSessionIds(): string[] {
     return [...this.activeSessionIds]
+  }
+
+  /** This daemon's own retained closed-pane descendant records, for the idle-agent-cleanup scheduler (which runs in Electron main, a separate OS process) to pull each tick. */
+  async getRetainedPaneDescendants(): Promise<RetainedPaneDescendantsWireRecord[]> {
+    await this.ensureConnected()
+    const result = await this.client.request<GetRetainedPaneDescendantsResult>(
+      'getRetainedPaneDescendants',
+      undefined
+    )
+    return result.retained
   }
 
   // Why: the daemon's kill-all-and-shutdown path suppresses onExit fanout (session.ts:246-252), so synthesize pty:exit
