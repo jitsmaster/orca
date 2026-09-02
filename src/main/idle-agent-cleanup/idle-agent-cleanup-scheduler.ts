@@ -18,6 +18,7 @@ export class IdleAgentCleanupScheduler {
   private readonly _getSettings: () => IdleAgentCleanupSchedulerSettings
   private readonly _runTick: () => Promise<void>
   private _intervalHandle: ReturnType<typeof setInterval> | undefined
+  private _tickInFlight = false
 
   constructor(deps: IdleAgentCleanupSchedulerDeps) {
     this._getSettings = deps.getSettings
@@ -33,7 +34,17 @@ export class IdleAgentCleanupScheduler {
       return
     }
     this._intervalHandle = setInterval(() => {
-      void this._runTick()
+      // A tick slower than the configured interval (many candidates, a slow
+      // Windows taskkill) must not overlap with the next one -- doubled
+      // concurrent full-table scans and a candidate independently
+      // kill-attempted twice are both worse than skipping one firing.
+      if (this._tickInFlight) {
+        return
+      }
+      this._tickInFlight = true
+      void this._runTick().finally(() => {
+        this._tickInFlight = false
+      })
     }, settings.idleAgentCleanupIntervalMs)
   }
 

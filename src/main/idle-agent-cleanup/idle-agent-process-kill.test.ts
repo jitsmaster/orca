@@ -76,7 +76,7 @@ describe('killOrphanedAgentProcessByPid — win32', () => {
 
     expect(runProcessMock).toHaveBeenCalledWith({
       program: windowsSystem32Binary('taskkill.exe'),
-      args: ['/pid', '4242', '/t', '/f'],
+      args: ['/pid', '4242', '/f'],
       timeoutMs: 5_000
     })
   })
