@@ -43,6 +43,14 @@ export type AgentForegroundResolutionOptions = {
   anchorProcessId?: number
   /** The cached agent name the anchor pid is supposed to prove. */
   anchorProcessName?: string
+  /**
+   * A caller's own "is my proc still the current occupant of this pane id"
+   * check. `paneId` is a stable, respawn-surviving id; this scan can outlive
+   * a respawn under the same id, so the descendant-tracking write it feeds
+   * must not land after a new occupant has already taken over. Omit when the
+   * caller has no such risk (or no such check available).
+   */
+  isPaneObservationStillCurrent?: () => boolean
 }
 
 export type WindowsAgentForegroundResolution = {
@@ -100,7 +108,8 @@ export async function resolveWindowsAgentForegroundProcessWithAvailability(
       options.paneId,
       shellPid,
       inventory.candidates,
-      inventory.rootRow?.command ?? ''
+      inventory.rootRow?.command ?? '',
+      options.isPaneObservationStillCurrent
     )
   }
   const candidates = inventory.candidates

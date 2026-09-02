@@ -95,6 +95,22 @@ describe('recordPaneDescendantObservation — POSIX overload (paneId, shellPid, 
 
     expect(paneObservedDescendants.get('pane-1')).toEqual(before)
   })
+
+  it('does not write when isStillCurrent() reports the pane id was reused by a respawn since the scan started', () => {
+    const rows = [row(100, 1, 'bash -l'), row(101, 100, 'node childA')]
+
+    recordPaneDescendantObservation('pane-1', 100, rows, () => false)
+
+    expect(paneObservedDescendants.has('pane-1')).toBe(false)
+  })
+
+  it('writes when isStillCurrent() reports the pane id is still owned by this scan', () => {
+    const rows = [row(100, 1, 'bash -l'), row(101, 100, 'node childA')]
+
+    recordPaneDescendantObservation('pane-1', 100, rows, () => true)
+
+    expect(paneObservedDescendants.has('pane-1')).toBe(true)
+  })
 })
 
 describe('recordPaneDescendantObservation — Windows overload (paneId, shellPid, descendants, rootCommandLine)', () => {
@@ -136,6 +152,12 @@ describe('recordPaneDescendantObservation — Windows overload (paneId, shellPid
     })
 
     recordPaneDescendantObservation('pane-2', 200, [{ pid: 201 }], 'cmd.exe /c claude')
+
+    expect(paneObservedDescendants.has('pane-2')).toBe(false)
+  })
+
+  it('does not write when isStillCurrent() reports the pane id was reused by a respawn since the scan started', () => {
+    recordPaneDescendantObservation('pane-2', 200, [{ pid: 201 }], 'cmd.exe /c claude', () => false)
 
     expect(paneObservedDescendants.has('pane-2')).toBe(false)
   })

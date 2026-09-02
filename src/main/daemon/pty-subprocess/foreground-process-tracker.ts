@@ -139,6 +139,7 @@ export function createPtyForegroundProcessTracker(args: {
     void resolveAgentForegroundProcessWithAvailability(proc.pid, fallbackProcess, {
       contextPaths,
       paneId: args.sessionId,
+      isPaneObservationStillCurrent: () => !args.isDead(),
       ...(anchor?.pid != null
         ? { anchorProcessId: anchor.pid, anchorProcessName: anchor.processName }
         : {})
@@ -281,6 +282,7 @@ export function createPtyForegroundProcessTracker(args: {
           {
             contextPaths,
             paneId: args.sessionId,
+            isPaneObservationStillCurrent: () => !args.isDead(),
             fresh: true,
             ...(process.platform === 'win32'
               ? {

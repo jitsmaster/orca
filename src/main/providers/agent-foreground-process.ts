@@ -180,7 +180,12 @@ export async function resolveAgentForegroundProcessWithAvailability(
       ? await getFreshProcessTableSnapshot()
       : await getProcessTableSnapshot()
     if (options.paneId) {
-      recordPaneDescendantObservation(options.paneId, shellPid, rows)
+      recordPaneDescendantObservation(
+        options.paneId,
+        shellPid,
+        rows,
+        options.isPaneObservationStillCurrent
+      )
     }
     if (options.fresh && !rows.some((row) => row.pid === shellPid)) {
       return { available: false, processName: fallbackProcess }

@@ -78,21 +78,33 @@ export function collectPaneDescendantPids(
 export function recordPaneDescendantObservation(
   paneId: string,
   shellPid: number,
-  rows: ProcessTableRow[]
+  rows: ProcessTableRow[],
+  isStillCurrent?: () => boolean
 ): void
 /** Windows overload: descendants and root command line are already resolved by the caller. */
 export function recordPaneDescendantObservation(
   paneId: string,
   shellPid: number,
   descendants: { pid: number }[],
-  rootCommandLine: string
+  rootCommandLine: string,
+  isStillCurrent?: () => boolean
 ): void
 export function recordPaneDescendantObservation(
   paneId: string,
   shellPid: number,
   rowsOrDescendants: ProcessTableRow[] | { pid: number }[],
-  rootCommandLine?: string
+  rootCommandLineOrIsStillCurrent?: string | (() => boolean),
+  isStillCurrentIfRootCommandLineGiven?: () => boolean
 ): void {
+  const rootCommandLine =
+    typeof rootCommandLineOrIsStillCurrent === 'string'
+      ? rootCommandLineOrIsStillCurrent
+      : undefined
+  const isStillCurrent =
+    (typeof rootCommandLineOrIsStillCurrent === 'function'
+      ? rootCommandLineOrIsStillCurrent
+      : isStillCurrentIfRootCommandLineGiven) ?? (() => true)
+
   // A late-resolving observation for a pane that already closed must not
   // resurrect a live-tracking entry alongside its retained one.
   if (retainedClosedPaneDescendants.has(paneId)) {
@@ -100,6 +112,12 @@ export function recordPaneDescendantObservation(
   }
 
   if (rootCommandLine !== undefined) {
+    // Checked as late as possible, right before the write: a scan started for
+    // one shell can outlive a respawn under the same paneId, and must not
+    // overwrite the new occupant's live tracking with stale descendants.
+    if (!isStillCurrent()) {
+      return
+    }
     paneObservedDescendants.set(paneId, {
       paneId,
       rootCommandLine,
@@ -114,6 +132,9 @@ export function recordPaneDescendantObservation(
   const shellRow = rows.find((row) => row.pid === shellPid)
   if (!shellRow) {
     // Shell itself not in this snapshot; nothing reliable to record this pass.
+    return
+  }
+  if (!isStillCurrent()) {
     return
   }
   paneObservedDescendants.set(paneId, {

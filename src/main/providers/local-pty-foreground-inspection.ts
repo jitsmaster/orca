@@ -96,6 +96,7 @@ export async function getLocalPtyForegroundProcess(id: string): Promise<string |
       {
         contextPaths: ptyAgentForegroundContextPaths.get(id),
         paneId: id,
+        isPaneObservationStillCurrent: () => ptyProcesses.get(id) === proc,
         ...(cachedEntry?.pid != null
           ? { anchorProcessId: cachedEntry.pid, anchorProcessName: cachedEntry.name }
           : {})
@@ -164,6 +165,7 @@ export async function confirmLocalPtyForegroundProcess(id: string): Promise<stri
       {
         contextPaths: ptyAgentForegroundContextPaths.get(id),
         paneId: id,
+        isPaneObservationStillCurrent: () => ptyProcesses.get(id) === proc,
         fresh: true,
         ...(process.platform === 'win32'
           ? {
