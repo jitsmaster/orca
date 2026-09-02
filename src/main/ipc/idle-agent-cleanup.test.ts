@@ -13,10 +13,16 @@ vi.mock('electron', () => ({
 }))
 
 import {
-  registerIdleAgentCleanupHandlers,
   notifyIdleAgentCleanupActivityChanged,
   createNotifyingIdleAgentCleanupLog
 } from './idle-agent-cleanup'
+import type * as IdleAgentCleanupIpcModule from './idle-agent-cleanup'
+
+/** Loads a fresh module instance so its module-level `registered` guard starts unset. */
+async function importFreshIdleAgentCleanupIpc(): Promise<typeof IdleAgentCleanupIpcModule> {
+  vi.resetModules()
+  return import('./idle-agent-cleanup')
+}
 
 function makeEntry(overrides: Partial<IdleAgentCleanupLogEntry> = {}): IdleAgentCleanupLogEntry {
   return {
@@ -48,7 +54,8 @@ describe('registerIdleAgentCleanupHandlers', () => {
     logStore.listRecent.mockReset()
   })
 
-  it('registers idleAgentCleanup:getRecentActivity via ipcMain.handle', () => {
+  it('registers idleAgentCleanup:getRecentActivity via ipcMain.handle', async () => {
+    const { registerIdleAgentCleanupHandlers } = await importFreshIdleAgentCleanupIpc()
     registerIdleAgentCleanupHandlers(logStore as unknown as IdleAgentCleanupLogStore)
 
     const channels = handleMock.mock.calls.map((call) => call[0])
@@ -58,6 +65,7 @@ describe('registerIdleAgentCleanupHandlers', () => {
   it('answers idleAgentCleanup:getRecentActivity with logStore.listRecent()', async () => {
     const entries = [makeEntry()]
     logStore.listRecent.mockResolvedValue(entries)
+    const { registerIdleAgentCleanupHandlers } = await importFreshIdleAgentCleanupIpc()
     registerIdleAgentCleanupHandlers(logStore as unknown as IdleAgentCleanupLogStore)
 
     const handler = handleMock.mock.calls.find(
@@ -66,6 +74,20 @@ describe('registerIdleAgentCleanupHandlers', () => {
 
     await expect(handler()).resolves.toEqual(entries)
     expect(logStore.listRecent).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not throw and does not re-register the channel on a second call (macOS reactivate guard)', async () => {
+    const { registerIdleAgentCleanupHandlers } = await importFreshIdleAgentCleanupIpc()
+
+    expect(() => {
+      registerIdleAgentCleanupHandlers(logStore as unknown as IdleAgentCleanupLogStore)
+      registerIdleAgentCleanupHandlers(logStore as unknown as IdleAgentCleanupLogStore)
+    }).not.toThrow()
+
+    const registrationsForChannel = handleMock.mock.calls.filter(
+      (call) => call[0] === 'idleAgentCleanup:getRecentActivity'
+    )
+    expect(registrationsForChannel).toHaveLength(1)
   })
 })
 
@@ -116,7 +138,7 @@ describe('createNotifyingIdleAgentCleanupLog', () => {
     browserWindowGetAllWindowsMock.mockReset()
   })
 
-  it('records the entry then pushes the resulting listRecent() array to every window', async () => {
+  it('records the entry, then flush() pushes the resulting listRecent() array to every window', async () => {
     const entry = makeEntry()
     const refreshedEntries = [entry, makeEntry({ pid: 5678 })]
     logStore.record.mockResolvedValue(undefined)
@@ -128,6 +150,9 @@ describe('createNotifyingIdleAgentCleanupLog', () => {
       logStore as unknown as IdleAgentCleanupLogStore
     )
     await notifyingLog.record(entry)
+    expect(window.webContents.send).not.toHaveBeenCalled()
+
+    await notifyingLog.flush()
 
     expect(logStore.record).toHaveBeenCalledWith(entry)
     expect(logStore.listRecent).toHaveBeenCalledTimes(1)

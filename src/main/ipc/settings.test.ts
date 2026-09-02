@@ -357,7 +357,7 @@ describe('registerSettingsHandlers', () => {
     expect(otherSend).toHaveBeenCalledWith('settings:changed', { defaultTuiAgent: 'codex' })
   })
 
-  it('updates the agent awake service when the keep-awake setting changes', () => {
+  it('updates the agent awake service when the keep-awake setting changes', async () => {
     const agentAwakeService = { setMode: vi.fn() }
     store.getSettings.mockReturnValue({ keepComputerAwakeWhileAgentsRun: false })
     store.updateSettings.mockReturnValue({ keepComputerAwakeWhileAgentsRun: true })
@@ -368,7 +368,7 @@ describe('registerSettingsHandlers', () => {
       args: unknown
     ) => unknown
 
-    handler(settingsInvokeEvent, { keepComputerAwakeWhileAgentsRun: true })
+    await handler(settingsInvokeEvent, { keepComputerAwakeWhileAgentsRun: true })
 
     expect(store.updateSettings).toHaveBeenCalledWith(
       {
@@ -396,7 +396,7 @@ describe('registerSettingsHandlers', () => {
     expect(agentAwakeService.setMode).not.toHaveBeenCalled()
   })
 
-  it('reschedules the idle agent cleanup timer when the enabled setting changes', () => {
+  it('reschedules the idle agent cleanup timer when the enabled setting changes', async () => {
     const idleAgentCleanupScheduler = { onSettingsChanged: vi.fn() }
     store.getSettings.mockReturnValue({ idleAgentCleanupEnabled: false })
     store.updateSettings.mockReturnValue({ idleAgentCleanupEnabled: true })
@@ -407,14 +407,14 @@ describe('registerSettingsHandlers', () => {
       args: unknown
     ) => unknown
 
-    handler(settingsInvokeEvent, { idleAgentCleanupEnabled: true })
+    await handler(settingsInvokeEvent, { idleAgentCleanupEnabled: true })
 
     expect(idleAgentCleanupScheduler.onSettingsChanged).toHaveBeenCalledWith([
       'idleAgentCleanupEnabled'
     ])
   })
 
-  it('reschedules the idle agent cleanup timer when the interval setting changes', () => {
+  it('reschedules the idle agent cleanup timer when the interval setting changes', async () => {
     const idleAgentCleanupScheduler = { onSettingsChanged: vi.fn() }
     store.getSettings.mockReturnValue({ idleAgentCleanupIntervalMs: 300_000 })
     store.updateSettings.mockReturnValue({ idleAgentCleanupIntervalMs: 60_000 })
@@ -425,7 +425,7 @@ describe('registerSettingsHandlers', () => {
       args: unknown
     ) => unknown
 
-    handler(settingsInvokeEvent, { idleAgentCleanupIntervalMs: 60_000 })
+    await handler(settingsInvokeEvent, { idleAgentCleanupIntervalMs: 60_000 })
 
     expect(idleAgentCleanupScheduler.onSettingsChanged).toHaveBeenCalledWith([
       'idleAgentCleanupIntervalMs'
@@ -444,6 +444,31 @@ describe('registerSettingsHandlers', () => {
     ) => unknown
 
     handler(settingsInvokeEvent, { defaultTuiAgent: 'codex' })
+
+    expect(idleAgentCleanupScheduler.onSettingsChanged).not.toHaveBeenCalled()
+  })
+
+  it('does not reschedule the idle agent cleanup timer for a no-op resave of the same enabled/interval values', () => {
+    const idleAgentCleanupScheduler = { onSettingsChanged: vi.fn() }
+    store.getSettings.mockReturnValue({
+      idleAgentCleanupEnabled: true,
+      idleAgentCleanupIntervalMs: 300_000
+    })
+    store.updateSettings.mockReturnValue({
+      idleAgentCleanupEnabled: true,
+      idleAgentCleanupIntervalMs: 300_000
+    })
+    registerSettingsHandlers(store as never, undefined, idleAgentCleanupScheduler as never)
+
+    const handler = handleMock.mock.calls.find((call) => call[0] === 'settings:set')?.[1] as (
+      _event: unknown,
+      args: unknown
+    ) => unknown
+
+    handler(settingsInvokeEvent, {
+      idleAgentCleanupEnabled: true,
+      idleAgentCleanupIntervalMs: 300_000
+    })
 
     expect(idleAgentCleanupScheduler.onSettingsChanged).not.toHaveBeenCalled()
   })

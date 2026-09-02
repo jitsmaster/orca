@@ -1,4 +1,5 @@
 import { app } from 'electron'
+import { createRegisterOnceGuard } from '../register-once-guard'
 import { registerAppHandlers } from '../app'
 import { registerCliHandlers } from '../cli'
 import { registerPreflightHandlers } from '../preflight'
@@ -93,7 +94,7 @@ import {
 import type { PluginService } from '../../plugins/plugin-service'
 import type { PluginMarketplaceHandlerServices } from '../plugin-marketplaces'
 
-let registered = false
+const hasRegistered = createRegisterOnceGuard()
 
 type CoreHandlerLifecycleOptions = {
   onBeforeRelaunch?: () => void | Promise<void>
@@ -127,17 +128,16 @@ export function registerCoreHandlers(
   idleAgentCleanupScheduler?: IdleAgentCleanupScheduler
 ): void {
   // Why: on macOS the app can stay alive after all windows close, then
-  // openMainWindow() is called again on 'activate'. ipcMain.handle() throws
-  // if a channel is registered twice, so we guard to register only once and
-  // just update the per-window web-contents ID on subsequent calls.
+  // openMainWindow() is called again on 'activate'. The guard below registers
+  // handlers only once; the calls above still run every time so the
+  // per-window web-contents ID stays current.
   setTrustedBrowserRendererWebContentsId(mainWindowWebContentsId)
   setTrustedClipboardRendererWebContentsId(mainWindowWebContentsId)
   setTrustedUIRendererWebContentsId(mainWindowWebContentsId)
   setAgentBrowserBridgeRef(runtime.getAgentBrowserBridge())
-  if (registered) {
+  if (!hasRegistered()) {
     return
   }
-  registered = true
 
   registerAppHandlers(store, { onBeforeRelaunch: lifecycleOptions.onBeforeRelaunch })
   registerCliHandlers()

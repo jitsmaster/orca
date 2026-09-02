@@ -11,52 +11,27 @@ import { track } from '../telemetry/client'
 import { SETTINGS_CHANGED_WHITELIST, type SettingsChangedKey } from '../../shared/telemetry-events'
 import type { AgentAwakeService } from '../agent-awake-service'
 import type { IdleAgentCleanupScheduler } from '../idle-agent-cleanup/idle-agent-cleanup-scheduler'
-import { sanitizeFloatingWorkspaceDirectorySetting } from './floating-workspace-directory'
 import { applyAgentStatusHooksEnabled } from '../agent-hooks/managed-agent-hook-controls'
 import { recordManagedHookInstallFailure } from '../agent-hooks/install-telemetry'
 import { applyElectronProxySettings } from '../network/proxy-settings'
 import { applyBrowserSessionProxies } from '../browser/browser-session-proxy'
 import { browserSessionRegistry } from '../browser/browser-session-registry'
-import { normalizeProxyBypassRules, normalizeProxyUrl } from '../../shared/network-proxy'
-import { normalizeAppIconId } from '../../shared/app-icon'
-import { normalizeUiLanguage } from '../../shared/ui-language'
 import { applyAppIcon } from '../app-icon'
-import { normalizeTerminalCustomThemes } from '../../shared/terminal-custom-themes'
-import { normalizeDesktopTerminalScrollbackRows } from '../../shared/terminal-scrollback-policy'
-import { normalizeTerminalLineHeight } from '../../shared/terminal-line-height-settings'
+import {
+  applySettingsUpdateNormalizations,
+  sanitizeRendererSettingsUpdate
+} from './settings-update-sanitization'
 import { prepareLocalWorktreeRootsForRepos } from '../worktree-root-preparation'
 import { scheduleCurrentWorktreeBaseDirectoryWatcherSync } from './worktree-base-directory-watcher'
 import { applyPRBotAuthorOverride } from '../../shared/pr-bot-author-overrides'
 import { resolveEnvironment } from '../../shared/runtime-environment-store'
 import { haveSameDisabledTuiAgents } from '../../shared/tui-agent-selection'
-import {
-  normalizeMobilePairingCustomAddress,
-  normalizeMobilePairingCustomAddresses
-} from '../../shared/mobile-pairing-custom-address'
-import {
-  computerAwakeSettingsForMode,
-  normalizeComputerAwakeMode
-} from '../../shared/computer-awake-mode'
+import { normalizeComputerAwakeMode } from '../../shared/computer-awake-mode'
 
 // Why: the whitelist is the source-of-truth for which keys we emit on. Casting
 // to a Set once at module load lets the IPC handler's per-key membership
 // check stay O(1) without re-coercing the readonly tuple on every call.
 const SETTINGS_CHANGED_WHITELIST_SET = new Set<string>(SETTINGS_CHANGED_WHITELIST)
-
-type LegacyTerminalScrollbackSettingsUpdate = Partial<GlobalSettings> & {
-  terminalScrollbackBytes?: unknown
-}
-
-function sanitizeRendererSettingsUpdate(args: Partial<GlobalSettings>): Partial<GlobalSettings> {
-  const { terminalScrollbackBytes: _legacyScrollbackBytes, ...sanitizedArgs } =
-    args as LegacyTerminalScrollbackSettingsUpdate
-  void _legacyScrollbackBytes
-  // Plugin consent and enablement are main-owned authority state. Renderer
-  // writes must pass the dedicated reviewed-fingerprint handlers.
-  delete sanitizedArgs.pluginConsents
-  delete sanitizedArgs.disabledPlugins
-  return sanitizedArgs
-}
 
 // Why: fields that appear in the View > Appearance submenu need the menu
 // rebuilt after any update so the checkbox `checked` state stays in sync
@@ -124,68 +99,7 @@ export function registerSettingsHandlers(
 
   ipcMain.handle('settings:set', async (event, args: Partial<GlobalSettings>) => {
     const sanitizedArgs = sanitizeRendererSettingsUpdate(args)
-    // Why: connection/navigation code receives the generic settings writer; the
-    // durable server preference has a dedicated Advanced-control boundary.
-    delete sanitizedArgs.activeRuntimeEnvironmentId
-    // Why: Floating Workspace grants are trusted only when written by the
-    // main-process directory picker, never by renderer-provided settings IPC.
-    delete sanitizedArgs.floatingTerminalTrustedCwds
-    if ('computerAwakeMode' in sanitizedArgs) {
-      Object.assign(
-        sanitizedArgs,
-        computerAwakeSettingsForMode(
-          normalizeComputerAwakeMode(
-            sanitizedArgs.computerAwakeMode,
-            sanitizedArgs.keepComputerAwakeWhileAgentsRun
-          )
-        )
-      )
-    } else if ('keepComputerAwakeWhileAgentsRun' in sanitizedArgs) {
-      Object.assign(
-        sanitizedArgs,
-        computerAwakeSettingsForMode(sanitizedArgs.keepComputerAwakeWhileAgentsRun ? 'auto' : 'off')
-      )
-    }
-    if (typeof args.floatingTerminalCwd === 'string') {
-      sanitizedArgs.floatingTerminalCwd = await sanitizeFloatingWorkspaceDirectorySetting(
-        store,
-        args.floatingTerminalCwd
-      )
-    }
-    if ('httpProxyUrl' in args) {
-      const proxyUrl = normalizeProxyUrl(args.httpProxyUrl)
-      sanitizedArgs.httpProxyUrl = proxyUrl.ok ? proxyUrl.value : ''
-    }
-    if ('httpProxyBypassRules' in args) {
-      sanitizedArgs.httpProxyBypassRules = normalizeProxyBypassRules(args.httpProxyBypassRules)
-    }
-    if ('appIcon' in args) {
-      sanitizedArgs.appIcon = normalizeAppIconId(args.appIcon)
-    }
-    if ('terminalCustomThemes' in args) {
-      sanitizedArgs.terminalCustomThemes = normalizeTerminalCustomThemes(args.terminalCustomThemes)
-    }
-    if ('terminalScrollbackRows' in args) {
-      sanitizedArgs.terminalScrollbackRows = normalizeDesktopTerminalScrollbackRows(
-        args.terminalScrollbackRows
-      )
-    }
-    if ('terminalLineHeight' in args) {
-      sanitizedArgs.terminalLineHeight = normalizeTerminalLineHeight(args.terminalLineHeight)
-    }
-    if ('uiLanguage' in args) {
-      sanitizedArgs.uiLanguage = normalizeUiLanguage(args.uiLanguage)
-    }
-    if ('mobilePairingCustomAddress' in args) {
-      sanitizedArgs.mobilePairingCustomAddress = normalizeMobilePairingCustomAddress(
-        args.mobilePairingCustomAddress
-      )
-    }
-    if ('mobilePairingCustomAddresses' in args) {
-      sanitizedArgs.mobilePairingCustomAddresses = normalizeMobilePairingCustomAddresses(
-        args.mobilePairingCustomAddresses
-      )
-    }
+    await applySettingsUpdateNormalizations(store, args, sanitizedArgs)
     if (args.theme) {
       nativeTheme.themeSource = args.theme
     }
@@ -269,8 +183,10 @@ export function registerSettingsHandlers(
       applyAppIcon(result.appIcon)
     }
     if (
-      'idleAgentCleanupEnabled' in sanitizedArgs ||
-      'idleAgentCleanupIntervalMs' in sanitizedArgs
+      ('idleAgentCleanupEnabled' in sanitizedArgs &&
+        before.idleAgentCleanupEnabled !== result.idleAgentCleanupEnabled) ||
+      ('idleAgentCleanupIntervalMs' in sanitizedArgs &&
+        before.idleAgentCleanupIntervalMs !== result.idleAgentCleanupIntervalMs)
     ) {
       idleAgentCleanupScheduler?.onSettingsChanged(Object.keys(sanitizedArgs))
     }

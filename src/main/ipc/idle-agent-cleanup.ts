@@ -1,8 +1,14 @@
 import { BrowserWindow, ipcMain } from 'electron'
 import type { IdleAgentCleanupLogEntry } from '../../shared/idle-agent-cleanup-log-entry'
 import type { IdleAgentCleanupLogStore } from '../idle-agent-cleanup/idle-agent-cleanup-log-store'
+import { createRegisterOnceGuard } from './register-once-guard'
+
+const hasRegistered = createRegisterOnceGuard()
 
 export function registerIdleAgentCleanupHandlers(logStore: IdleAgentCleanupLogStore): void {
+  if (!hasRegistered()) {
+    return
+  }
   ipcMain.handle('idleAgentCleanup:getRecentActivity', () => logStore.listRecent())
 }
 
@@ -14,13 +20,14 @@ export function notifyIdleAgentCleanupActivityChanged(entries: IdleAgentCleanupL
   }
 }
 
-/** Wraps a log store so every record() also pushes the refreshed list to all renderers. */
+/** Wraps a log store so a tick's flush() (after all its record() calls settle) pushes the refreshed list to all renderers once. */
 export function createNotifyingIdleAgentCleanupLog(logStore: IdleAgentCleanupLogStore): {
   record(entry: IdleAgentCleanupLogEntry): Promise<void>
+  flush(): Promise<void>
 } {
   return {
-    record: async (entry) => {
-      await logStore.record(entry)
+    record: (entry) => logStore.record(entry),
+    flush: async () => {
       notifyIdleAgentCleanupActivityChanged(await logStore.listRecent())
     }
   }
