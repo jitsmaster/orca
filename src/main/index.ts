@@ -63,6 +63,7 @@ import {
   initDaemonPtyProvider,
   disconnectDaemon,
   getDaemonProvider,
+  listDaemonRetainedPaneDescendants,
   listLiveDaemonPtyIds,
   shutdownDaemon
 } from './daemon/daemon-init'
@@ -2622,7 +2623,8 @@ void app.whenReady().then(async () => {
     runTick: () =>
       runIdleAgentCleanupTick(
         store!.getSettings(),
-        createNotifyingIdleAgentCleanupLog(IdleAgentCleanupLogStore.fromUserData())
+        createNotifyingIdleAgentCleanupLog(IdleAgentCleanupLogStore.fromUserData()),
+        { fetchDaemonRetainedPaneDescendants: listDaemonRetainedPaneDescendants }
       )
   })
   idleAgentCleanupScheduler.start()
