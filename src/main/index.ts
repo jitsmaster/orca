@@ -453,6 +453,11 @@ let headlessBrowserDisplayAvailable = false
 let starNag: StarNagService | null = null
 let agentAwakeService: AgentAwakeService | null = null
 let idleAgentCleanupScheduler: IdleAgentCleanupScheduler | null = null
+// Why one shared instance, not one per call site: each instance owns its own
+// writeChain used to serialize writes to the same on-disk log file: a fresh
+// instance per tick would give every tick an independent chain over that
+// same file, discarding the serialization guarantee across ticks.
+let idleAgentCleanupLogStore: IdleAgentCleanupLogStore | null = null
 let crashReports: CrashReportStore | null = null
 let unsubscribeAgentAwakeStatusChanges: (() => void) | null = null
 let unsubscribeSystemResumeBroadcast: (() => void) | null = null
@@ -1674,7 +1679,7 @@ function openMainWindow(options: { revealOnDidFinishLoad?: boolean } = {}): Brow
       : undefined,
     idleAgentCleanupScheduler ?? undefined
   )
-  registerIdleAgentCleanupHandlers(IdleAgentCleanupLogStore.fromUserData())
+  registerIdleAgentCleanupHandlers(idleAgentCleanupLogStore!)
   automations.setWebContents(window.webContents)
   automations.start()
   attachMainWindowServices(
@@ -2618,12 +2623,13 @@ void app.whenReady().then(async () => {
   )
   // Why: start from empty — disk-hydrated status rows are UI continuity only; only this runtime's hook events keep the computer awake.
   agentAwakeService.setStatuses([])
+  idleAgentCleanupLogStore = IdleAgentCleanupLogStore.fromUserData()
   idleAgentCleanupScheduler = new IdleAgentCleanupScheduler({
     getSettings: () => store!.getSettings(),
     runTick: () =>
       runIdleAgentCleanupTick(
         store!.getSettings(),
-        createNotifyingIdleAgentCleanupLog(IdleAgentCleanupLogStore.fromUserData()),
+        createNotifyingIdleAgentCleanupLog(idleAgentCleanupLogStore!),
         { fetchDaemonRetainedPaneDescendants: listDaemonRetainedPaneDescendants }
       )
   })
@@ -3638,6 +3644,7 @@ app.on('before-quit', () => {
   agentAwakeService = null
   idleAgentCleanupScheduler?.stop()
   idleAgentCleanupScheduler = null
+  idleAgentCleanupLogStore = null
   // Why: defer PTY cleanup to will-quit so the renderer captures scrollback before PTY-exit events unmount TerminalPane (dropping its capture callbacks).
   rateLimits?.stop()
 })
