@@ -15,6 +15,7 @@ vi.mock('../../shared/process-table-snapshot', async (importOriginal) => {
 })
 
 import {
+  DEFAULT_RETENTION_GRACE_MS,
   evictExpiredRetainedPanes,
   retainDescendantsOnPaneClose
 } from './pane-close-descendant-retention'
@@ -138,7 +139,7 @@ describe('retainDescendantsOnPaneClose', () => {
 })
 
 describe('evictExpiredRetainedPanes', () => {
-  const GRACE_MS = 10 * 60_000
+  const GRACE_MS = DEFAULT_RETENTION_GRACE_MS
 
   // Documented convention: nowMs - retainedAtMs > graceMs evicts (strictly
   // greater than) — an entry exactly at the boundary is retained.

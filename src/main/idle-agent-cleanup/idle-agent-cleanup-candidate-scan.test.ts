@@ -28,6 +28,7 @@ import {
   killVerifiedOrphanedAgentProcess,
   runIdleAgentCleanupTick
 } from './idle-agent-cleanup-candidate-scan'
+import { DEFAULT_RETENTION_GRACE_MS } from './pane-close-descendant-retention'
 import { collectPaneDescendantPids } from './pane-descendant-observation'
 import {
   paneObservedDescendants,
@@ -185,7 +186,7 @@ describe('runIdleAgentCleanupTick', () => {
       rootCommandLine: 'bash -l --claude',
       shellPid: 300,
       descendantPids: new Set([301]),
-      retainedAtMs: Date.now() - (10 * 60_000 + 1)
+      retainedAtMs: Date.now() - (DEFAULT_RETENTION_GRACE_MS + 1)
     })
     getFreshProcessTableSnapshotMock.mockResolvedValue([row(301, 999, 'node claude-cli')])
 
@@ -371,7 +372,7 @@ describe('runIdleAgentCleanupTick', () => {
         descendantPids: [1401],
         rootCommandLine: 'bash -l --claude',
         shellPid: 1400,
-        retainedAtMs: Date.now() - (10 * 60_000 + 1)
+        retainedAtMs: Date.now() - (DEFAULT_RETENTION_GRACE_MS + 1)
       }
     ])
 

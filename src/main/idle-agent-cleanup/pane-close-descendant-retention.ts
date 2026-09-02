@@ -1,4 +1,5 @@
 import { getFreshProcessTableSnapshot } from '../../shared/process-table-snapshot'
+import { IDLE_AGENT_CLEANUP_INTERVAL_MS_MAX } from '../../shared/idle-agent-cleanup-interval-policy'
 import { readWindowsProcessTableFresh } from '../windows/windows-process-table'
 import { collectPaneDescendantPids } from './pane-descendant-observation'
 import {
@@ -8,7 +9,14 @@ import {
 
 // Exported for idle-agent-cleanup-candidate-scan.ts, which applies the same
 // grace window to daemon-sourced retained records pulled over RPC each tick.
-export const DEFAULT_RETENTION_GRACE_MS = 10 * 60_000
+//
+// Derived from (not just longer than) the largest configurable scan
+// interval: a retained entry must survive until a tick slow enough to use
+// that interval actually runs, or it would be evicted -- by this same
+// module's own self-pruning, or by the tick's own eviction pass -- before
+// ever being examined. The x2 margin covers a pane closing just after a
+// tick fires, which must still survive a full interval before the next one.
+export const DEFAULT_RETENTION_GRACE_MS = IDLE_AGENT_CLEANUP_INTERVAL_MS_MAX * 2
 
 /**
  * Pane-close handler: takes one immediate fresh process-table snapshot and
