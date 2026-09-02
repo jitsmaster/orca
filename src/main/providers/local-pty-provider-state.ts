@@ -114,7 +114,21 @@ export function clearPtyState(id: string): void {
   if (proc) {
     // Fire-and-forget: pane teardown is synchronous and must not block on a
     // process-table scan for the idle-agent-cleanup grace-period retention.
-    void retainDescendantsOnPaneClose(id, proc.pid).catch(() => {})
+    // The call already catches its own process-table-read failures; this is
+    // a last-resort backstop, logged so an unexpected rejection isn't silent.
+    void retainDescendantsOnPaneClose(
+      id,
+      proc.pid,
+      // A respawn under this same stable id replaces the map entry before this
+      // scan resolves; if so, this stale result must not touch the new
+      // occupant's tracking. `undefined` also passes -- this teardown deletes
+      // its own entry synchronously below, so "nothing has claimed `id` yet"
+      // is the expected, safe case.
+      () => {
+        const current = ptyProcesses.get(id)
+        return current === undefined || current === proc
+      }
+    ).catch((error) => console.warn('[idle-agent-cleanup] retain-on-close failed', error))
   }
   clearLocalPtyForceKillTimer(id)
   runPtyCleanup(id)
