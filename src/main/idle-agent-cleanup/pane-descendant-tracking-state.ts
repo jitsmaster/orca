@@ -5,6 +5,9 @@ export type PaneObservedDescendants = {
    * the pane-lineage signature fallback (idle-agent-cleanup-signatures.ts) so a candidate
    * whose own argv carries no agent signature can still match through what launched it. */
   rootCommandLine: string
+  /** The pane's own shell pid — the reachability root a tracked descendant must still
+   * fall under in a fresh scan to count as "still parented" (see idle-agent-cleanup-candidate-scan.ts). */
+  shellPid: number
   descendantPids: ReadonlySet<number>
   observedAtMs: number
 }
@@ -13,6 +16,7 @@ export type PaneObservedDescendants = {
 export type RetainedPaneDescendants = {
   paneId: string
   rootCommandLine: string
+  shellPid: number
   descendantPids: ReadonlySet<number>
   /** Pane-close time; the grace period is measured from here. */
   retainedAtMs: number

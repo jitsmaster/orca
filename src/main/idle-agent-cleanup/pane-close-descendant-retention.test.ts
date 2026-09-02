@@ -49,6 +49,7 @@ describe('retainDescendantsOnPaneClose', () => {
     paneObservedDescendants.set('pane-1', {
       paneId: 'pane-1',
       rootCommandLine: 'bash -l',
+      shellPid: 100,
       descendantPids: new Set([101]),
       observedAtMs: Date.now()
     })
@@ -61,6 +62,7 @@ describe('retainDescendantsOnPaneClose', () => {
     await retainDescendantsOnPaneClose('pane-1', 100)
 
     const retained = retainedClosedPaneDescendants.get('pane-1')
+    expect(retained?.shellPid).toBe(100)
     expect(retained?.descendantPids).toEqual(new Set([101, 102]))
   })
 
@@ -68,6 +70,7 @@ describe('retainDescendantsOnPaneClose', () => {
     paneObservedDescendants.set('pane-1', {
       paneId: 'pane-1',
       rootCommandLine: 'bash -l',
+      shellPid: 100,
       descendantPids: new Set([101, 102]),
       observedAtMs: Date.now()
     })
@@ -83,6 +86,7 @@ describe('retainDescendantsOnPaneClose', () => {
     paneObservedDescendants.set('pane-1', {
       paneId: 'pane-1',
       rootCommandLine: 'bash -l',
+      shellPid: 100,
       descendantPids: new Set(),
       observedAtMs: Date.now()
     })
@@ -97,6 +101,7 @@ describe('retainDescendantsOnPaneClose', () => {
     paneObservedDescendants.set('pane-1', {
       paneId: 'pane-1',
       rootCommandLine: 'bash -l',
+      shellPid: 100,
       descendantPids: new Set([101]),
       observedAtMs: Date.now()
     })
@@ -118,6 +123,7 @@ describe('retainDescendantsOnPaneClose', () => {
     paneObservedDescendants.set('pane-1', {
       paneId: 'pane-1',
       rootCommandLine: 'bash -l --agent claude',
+      shellPid: 100,
       descendantPids: new Set([101]),
       observedAtMs: Date.now()
     })
@@ -141,12 +147,14 @@ describe('evictExpiredRetainedPanes', () => {
     retainedClosedPaneDescendants.set('at-boundary', {
       paneId: 'at-boundary',
       rootCommandLine: 'bash',
+      shellPid: 100,
       descendantPids: new Set([1]),
       retainedAtMs: now - GRACE_MS
     })
     retainedClosedPaneDescendants.set('past-boundary', {
       paneId: 'past-boundary',
       rootCommandLine: 'bash',
+      shellPid: 200,
       descendantPids: new Set([2]),
       retainedAtMs: now - GRACE_MS - 1
     })

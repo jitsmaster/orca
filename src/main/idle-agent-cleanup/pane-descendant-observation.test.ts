@@ -51,6 +51,7 @@ describe('recordPaneDescendantObservation — POSIX overload (paneId, shellPid, 
 
     const entry = paneObservedDescendants.get('pane-1')
     expect(entry?.rootCommandLine).toBe('bash -l')
+    expect(entry?.shellPid).toBe(100)
     expect(entry?.descendantPids).toEqual(new Set([101, 102]))
   })
 
@@ -73,6 +74,7 @@ describe('recordPaneDescendantObservation — POSIX overload (paneId, shellPid, 
     retainedClosedPaneDescendants.set('pane-1', {
       paneId: 'pane-1',
       rootCommandLine: 'bash -l',
+      shellPid: 100,
       descendantPids: new Set([101]),
       retainedAtMs: Date.now()
     })
@@ -110,6 +112,7 @@ describe('recordPaneDescendantObservation — Windows overload (paneId, shellPid
     const entry = paneObservedDescendants.get('pane-2')
     expect(entry?.paneId).toBe('pane-2')
     expect(entry?.rootCommandLine).toBe('cmd.exe /c claude')
+    expect(entry?.shellPid).toBe(200)
     expect(entry?.descendantPids).toEqual(new Set([201, 202]))
     expect(entry?.observedAtMs).toBeGreaterThanOrEqual(before)
     expect(entry?.observedAtMs).toBeLessThanOrEqual(after)
@@ -127,6 +130,7 @@ describe('recordPaneDescendantObservation — Windows overload (paneId, shellPid
     retainedClosedPaneDescendants.set('pane-2', {
       paneId: 'pane-2',
       rootCommandLine: 'cmd.exe /c claude',
+      shellPid: 200,
       descendantPids: new Set([201]),
       retainedAtMs: Date.now()
     })
