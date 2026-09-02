@@ -20,7 +20,10 @@ export async function killOrphanedAgentProcessByPid(
       args: ['/pid', String(pid), '/f'],
       timeoutMs: 5_000
     })
-    return result.code === 0 ? 'killed' : 'kill-failed'
+    // Exit code 128 is taskkill's "the process specified does not exist" --
+    // the Windows analogue of POSIX ESRCH below. Already gone between
+    // re-verify and kill counts as success on both platforms alike.
+    return result.code === 0 || result.code === 128 ? 'killed' : 'kill-failed'
   }
 
   try {

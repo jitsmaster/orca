@@ -58,6 +58,18 @@ describe('killOrphanedAgentProcessByPid — win32', () => {
     await expect(killOrphanedAgentProcessByPid(4242)).resolves.toBe('kill-failed')
   })
 
+  it("reports 'killed', not an error, when taskkill exits 128 (already gone between re-verify and kill)", async () => {
+    runProcessMock.mockResolvedValue({
+      code: 128,
+      signal: null,
+      stdout: '',
+      stderr: 'ERROR: The process "4242" not found.',
+      timedOut: false
+    })
+
+    await expect(killOrphanedAgentProcessByPid(4242)).resolves.toBe('killed')
+  })
+
   // Design Resolution C: architecture's pseudocode literally wrote
   // `program: 'taskkill'`, which is wrong for this codebase — bare-name
   // resolution on Windows depends on Electron's PATH. The absolute System32
