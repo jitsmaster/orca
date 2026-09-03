@@ -9,7 +9,7 @@ const { getFreshProcessTableSnapshotMock } = vi.hoisted(() => ({
 // force the darwin/posix branch and mock only that reader (see also
 // windows-agent-foreground-process-scan-volume.test.ts for the platform-mocking
 // precedent this mirrors).
-vi.mock('../../shared/process-table-snapshot', async (importOriginal) => {
+vi.mock('../../shared/process-table-snapshot-reader', async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>
   return { ...actual, getFreshProcessTableSnapshot: getFreshProcessTableSnapshotMock }
 })

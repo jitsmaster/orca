@@ -11,7 +11,7 @@ const { killOrphanedAgentProcessByPidMock } = vi.hoisted(() => ({
 
 // Resolution E: platform-branch reads go through getFreshProcessTableSnapshot on
 // POSIX; tests below force darwin and mock only that reader.
-vi.mock('../../shared/process-table-snapshot', async (importOriginal) => {
+vi.mock('../../shared/process-table-snapshot-reader', async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>
   return { ...actual, getFreshProcessTableSnapshot: getFreshProcessTableSnapshotMock }
 })

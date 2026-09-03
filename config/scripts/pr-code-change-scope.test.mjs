@@ -86,6 +86,17 @@ describe('docs-only path classification', () => {
   it('does not start desktop PR Checks for mobile-only diffs', () => {
     expect(shouldRunPrChecks(['mobile/src/App.tsx', 'mobile/package.json'])).toBe(false)
   })
+
+  it('does not start desktop PR Checks for cloud-only diffs', () => {
+    expect(
+      shouldRunPrChecks([
+        'cloud/apps/relay/src/index.ts',
+        'cloud/package.json',
+        'cloud/.gitleaks.toml',
+        '.github/workflows/cloud-verify.yml'
+      ])
+    ).toBe(false)
+  })
 })
 
 describe('per-job path classification', () => {
@@ -179,6 +190,28 @@ describe('per-job path classification', () => {
       package: true
     })
     expectClassification(['native/computer-use-macos/Package.swift'], {})
+  })
+
+  it('runs Linux packaging when an artifact contract changes', () => {
+    for (const file of [
+      'config/docker/cli-launch-contract/Dockerfile',
+      'config/docker/cli-launch-contract/run-cli-case.sh',
+      'config/docker/headless-pairing/Dockerfile',
+      'config/docker/headless-pairing/run-appimage-case.sh',
+      'config/docker/headless-serve-shutdown/Dockerfile',
+      'config/scripts/run-linux-cli-launch-contract-docker.mjs',
+      'config/scripts/run-headless-linux-pairing-docker.mjs',
+      'config/scripts/static-appimage-package-contract.cjs'
+    ]) {
+      expectClassification([file], { package: true })
+    }
+  })
+
+  it('runs both package jobs when the shared skills runtime verifier changes', () => {
+    expectClassification(['config/scripts/verify-skills-cli-runtime.cjs'], {
+      package: true,
+      package_windows: true
+    })
   })
 
   it('runs shell contracts when live-shell inputs change', () => {

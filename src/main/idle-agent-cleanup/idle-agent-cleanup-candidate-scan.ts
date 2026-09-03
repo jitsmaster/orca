@@ -1,4 +1,4 @@
-import { getFreshProcessTableSnapshot } from '../../shared/process-table-snapshot'
+import { getFreshProcessTableSnapshot } from '../../shared/process-table-snapshot-reader'
 import { readWindowsProcessTableFresh } from '../windows/windows-process-table'
 import type { RetainedPaneDescendantsWireRecord } from '../daemon/types'
 import type { IdleAgentCleanupLogEntry } from '../../shared/idle-agent-cleanup-log-entry'

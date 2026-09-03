@@ -1,4 +1,4 @@
-import { getFreshProcessTableSnapshot } from '../../shared/process-table-snapshot'
+import { getFreshProcessTableSnapshot } from '../../shared/process-table-snapshot-reader'
 import { IDLE_AGENT_CLEANUP_INTERVAL_MS_MAX } from '../../shared/idle-agent-cleanup-interval-policy'
 import { readWindowsProcessTableFresh } from '../windows/windows-process-table'
 import { collectPaneDescendantPids } from './pane-descendant-observation'
