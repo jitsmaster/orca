@@ -325,17 +325,31 @@ function Terminal(): React.JSX.Element | null {
   const terminalWorktreeParkingTimersRef = useRef(new Map<string, number>())
   const allWorktrees = useAllWorktrees()
   const folderWorkspaces = useAppStore((s) => s.folderWorkspaces)
-  const workspaceSurfaces = useMemo(
-    () => [
+  const activeWorktreeId = useAppStore((s) => s.activeWorktreeId)
+  const detectedWorktreesByRepo = useAppStore((s) => s.detectedWorktreesByRepo)
+  const workspaceSurfaces = useMemo(() => {
+    const surfaces = [
       ...allWorktrees.map((worktree) => ({ id: worktree.id, path: worktree.path })),
       ...folderWorkspaces.map((workspace) => ({
         id: folderWorkspaceKey(workspace.id),
         path: workspace.folderPath
       }))
-    ],
-    [allWorktrees, folderWorkspaces]
-  )
-  const activeWorktreeId = useAppStore((s) => s.activeWorktreeId)
+    ]
+    // Why: Source Control can activate a worktree Orca has only detected but never
+    // registered (e.g. one nested under another worktree's own worktree folder) so its
+    // diff can be viewed. Without a surface for it here, the active worktree has nowhere
+    // to mount and the whole workspace renders blank (#diff-black-screen).
+    if (activeWorktreeId && !surfaces.some((surface) => surface.id === activeWorktreeId)) {
+      for (const result of Object.values(detectedWorktreesByRepo)) {
+        const detected = result.worktrees.find((worktree) => worktree.id === activeWorktreeId)
+        if (detected) {
+          surfaces.push({ id: detected.id, path: detected.path })
+          break
+        }
+      }
+    }
+    return surfaces
+  }, [allWorktrees, folderWorkspaces, activeWorktreeId, detectedWorktreesByRepo])
   const renderedActiveWorktreeId = activeWorktreeId
   const activeWorktreeDeferralHostId = useAppStore((s) =>
     getResolvedExecutionHostIdForWorktree(s, renderedActiveWorktreeId)
