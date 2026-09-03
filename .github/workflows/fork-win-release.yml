@@ -116,7 +116,11 @@ jobs:
       - name: Create fork release and upload installer
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          # Why a PAT over github.token: this workflow runs via workflow_dispatch on a
+          # forked repo, and GITHUB_TOKEN comes back read-only for that combination
+          # regardless of the repo's default-workflow-permissions setting, failing
+          # release creation with "403: Resource not accessible by integration".
+          GH_TOKEN: ${{ secrets.RELEASE_PAT || github.token }}
         run: |
           set -euo pipefail
           version="${{ steps.version.outputs.version }}"
