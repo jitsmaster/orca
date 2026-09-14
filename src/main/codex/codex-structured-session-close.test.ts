@@ -10,7 +10,10 @@ import {
   type CodexStructuredSessionEvent
 } from './codex-structured-session-adapter'
 import { handleCodexSessionExit } from './codex-structured-session-close'
+import { CodexBackgroundTaskTracker } from './codex-background-task-tracker'
 import type { CodexSession } from './codex-structured-session-state'
+import type { StructuredAgentSessionAdapter } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
+import { StructuredAgentSessionAdapterRouter } from '../native-chat/agent-session-wire/structured-agent-session-adapter-router'
 
 const THREAD = 'thread-1'
 
@@ -60,6 +63,16 @@ function adapterFixture() {
   return { adapter, connections, events }
 }
 
+function claudeAdapterStub(): StructuredAgentSessionAdapter {
+  return {
+    acquire: vi.fn(async () => ({ process: { pid: 1 } }) as never),
+    dispatch: vi.fn(),
+    cancelTurn: vi.fn(),
+    answerPrompt: vi.fn(),
+    setOption: vi.fn()
+  }
+}
+
 describe('Codex structured session close lifecycle', () => {
   it('forwards a one-shot exit when lifecycle admission is rejected', () => {
     const connection: CodexAppServerConnection = {
@@ -76,8 +89,10 @@ describe('Codex structured session close lifecycle', () => {
       handle: vi.fn().mockReturnValueOnce({ accepted: false, reason: 'backpressure' as const }),
       dispose: vi.fn()
     } as unknown as NonNullable<CodexSession['translator']>
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the literal supplies every CodexSession field the close path reads; the rest are unused by it.
     const session = {
       connection,
+      backgroundTasks: new CodexBackgroundTaskTracker('thread-1'),
       ended: false,
       requestedClose: false,
       fence: 7,
@@ -87,6 +102,7 @@ describe('Codex structured session close lifecycle', () => {
       prompts,
       options: new Map(),
       reportedOptions: {},
+      fastModeTierByModel: new Map(),
       turnIdWaiters: [],
       translator
     } as CodexSession
@@ -162,6 +178,29 @@ describe('Codex structured session close lifecycle', () => {
     await expect(adapter.forceCloseSession?.('session-1')).resolves.toBe(true)
     expect(events.filter((event) => event.type === 'ended')).toMatchObject([
       { cause: 'unexpected-exit', reason: 'sink failed', fence: 7 }
+    ])
+  })
+
+  it('routes Codex sink-failure recovery through force-close and preserves unexpected-exit settlement', async () => {
+    const { adapter, connections, events } = adapterFixture()
+    const router = new StructuredAgentSessionAdapterRouter(
+      { claude: claudeAdapterStub(), codex: adapter },
+      async () => {}
+    )
+    await router.acquire({ identity: identity('session-1'), fence: 7, spawnToken: 'spawn-1' })
+    const current = connections[0]
+    if (!current) {
+      throw new Error('missing connection')
+    }
+    current.connection.close = async () => {
+      current.handlers.onExit?.(new Error('journal sink failed'))
+      return true
+    }
+
+    const forceCloseSession = router.forceCloseSession
+    await expect(forceCloseSession('session-1')).resolves.toBe(true)
+    expect(events.filter((event) => event.type === 'ended')).toMatchObject([
+      { cause: 'unexpected-exit', reason: 'journal sink failed', fence: 7 }
     ])
   })
 })

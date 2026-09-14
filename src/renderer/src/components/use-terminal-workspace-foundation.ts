@@ -38,11 +38,15 @@ export function useTerminalWorkspaceFoundation() {
       ? activeWorktreeDeferralHostId
       : null
   const detectedWorktreesByRepo = useAppStore((state) => state.detectedWorktreesByRepo)
+  // Why gate the id on the host: the projection reads `activeWorkspaceId` only behind a
+  // truthy resolved host, so without one every active id yields the same surfaces — and a
+  // worktree switch must not re-project (and re-identify) every surface to rediscover that.
+  const activeFolderSurfaceId = activeFolderSurfaceHostId ? renderedActiveWorktreeId : null
   const workspaceSurfaces = useMemo(() => {
     const surfaces = projectWorkspaceSurfaces({
       worktreesById,
       folderWorkspaces,
-      activeWorkspaceId: renderedActiveWorktreeId,
+      activeWorkspaceId: activeFolderSurfaceId,
       activeWorkspaceResolvedHostId: activeFolderSurfaceHostId
     })
     // Why: Source Control can activate a worktree Orca has only detected but never
@@ -67,8 +71,9 @@ export function useTerminalWorkspaceFoundation() {
   }, [
     worktreesById,
     folderWorkspaces,
-    renderedActiveWorktreeId,
+    activeFolderSurfaceId,
     activeFolderSurfaceHostId,
+    renderedActiveWorktreeId,
     detectedWorktreesByRepo
   ])
   // Why split the ids out: every mount/park/activation pass reads only `.id`, but
