@@ -2,6 +2,7 @@ import type { AgentJournalMessageItem, AgentJournalSubmission } from './agent-se
 import { agentSessionRefusalOperationState } from './agent-session-refusal-retry'
 import type { AgentSessionWireRefusalCode } from './agent-session-wire'
 import { structuredAgentSessionPayloadFingerprint } from './structured-agent-session-mutation'
+import { DISPATCH_REJECTED_CANCELLED } from './structured-agent-session-dispatch-rejection'
 
 export type StructuredAgentSessionOutboxState = 'queued' | 'dispatching' | 'unconfirmed'
 
@@ -14,6 +15,7 @@ export type StructuredAgentSessionOutboxEntry = {
   queuedAt: number
   lastAttemptAt: number | null
   retryAfterUnknownSubmittedAt: number | null
+  source?: 'launch'
 }
 
 export type StructuredAgentSessionAttachment = {
@@ -102,6 +104,12 @@ export function reconcileStructuredAgentSessionOutbox(
     if (submission?.dispatchState === 'accepted') {
       return []
     }
+    if (
+      submission?.dispatchState === 'rejected' &&
+      submission.reason === DISPATCH_REJECTED_CANCELLED
+    ) {
+      return []
+    }
     if (submission?.dispatchState === 'pending') {
       return entry.state === 'dispatching' ? [entry] : [{ ...entry, state: 'dispatching' as const }]
     }
@@ -150,7 +158,8 @@ export function parseStructuredAgentSessionOutboxEntry(
     retryAfterUnknownSubmittedAt:
       typeof entry.retryAfterUnknownSubmittedAt === 'number'
         ? entry.retryAfterUnknownSubmittedAt
-        : null
+        : null,
+    ...(entry.source === 'launch' ? { source: 'launch' as const } : {})
   }
 }
 

@@ -61,6 +61,14 @@ export const AiVaultSearchTruncationSchema = z.object({
   query: z.boolean(),
   freshness: z.boolean()
 })
+/**
+ * Per-host outcomes of an all-computers merge. Additive and desktop-only: no
+ * host publishes this, and a reader that does not know it simply drops it.
+ */
+export const AiVaultSearchHostOutcomeSchema = z.object({
+  executionHostId: executionHostIdSchema,
+  outcome: z.enum(['searched', 'stale', 'disabled', 'not-ready', 'no-service', 'unreachable'])
+})
 const routeSchema = z.enum(['phrase', 'and', 'or', 'typo+phrase', 'typo+and', 'typo+or'])
 export const AiVaultSearchPlannerReportSchema = z.object({
   route: routeSchema,
@@ -80,7 +88,8 @@ export const AiVaultSearchResponseSchema = z.discriminatedUnion('kind', [
     generation: z.number().int().nonnegative(),
     truncated: AiVaultSearchTruncationSchema,
     durationMs: z.number().nonnegative(),
-    debug: AiVaultSearchDebugSchema.optional()
+    debug: AiVaultSearchDebugSchema.optional(),
+    hosts: z.array(AiVaultSearchHostOutcomeSchema).optional()
   }),
   z.object({
     kind: z.literal('stale-cursor'),
@@ -104,5 +113,8 @@ export const AiVaultSearchStatusSchema = z.object({
   degradedRoots: z.array(z.object({ root: z.string().optional(), reason: z.string() })),
   lastReconcileAt: z.number().nullable(),
   lastSweepCompletedAt: z.number().nullable(),
+  // Optional: an older host answers without it, and a reader that has none
+  // should show no breakdown rather than a breakdown of zeroes.
+  sessionsByAgent: z.record(z.string(), z.number().int().nonnegative()).optional(),
   generation: z.number().int().nonnegative()
 })

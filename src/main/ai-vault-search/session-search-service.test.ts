@@ -24,7 +24,7 @@ async function fixture() {
   // degradedRoots is re-stated because the contract type leaves `root` optional
   // for relay redaction, while the indexer always names the root it degraded.
   const indexer = {
-    status: () => ({ ...status, degradedRoots: [] }),
+    status: () => ({ ...status, degradedRoots: [], sessionsByAgent: {} }),
     reconcile: vi.fn(async () => {})
   }
   const service = createSessionSearchService({ engine: harness.engine, indexer })
@@ -86,7 +86,7 @@ describe('real index to public service adapter', () => {
       hits: [expect.objectContaining({ evidence: null })]
     })
     await service.reconcile()
-    expect(indexer.reconcile).toHaveBeenCalledExactlyOnceWith({ full: false })
+    expect(indexer.reconcile).toHaveBeenCalledExactlyOnceWith({ full: true })
     const status = await service.status()
     expect(AiVaultSearchStatusSchema.parse(status)).toEqual(status)
     expect(status.generation).toBeGreaterThan(0)

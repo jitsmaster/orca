@@ -16,6 +16,7 @@ import {
   computerAwakeSettingsForMode,
   normalizeComputerAwakeMode
 } from '../../shared/computer-awake-mode'
+import { resolveAiVaultSearchSettings } from '../../shared/ai-vault-search-settings'
 
 type LegacyTerminalScrollbackSettingsUpdate = Partial<GlobalSettings> & {
   terminalScrollbackBytes?: unknown
@@ -83,6 +84,9 @@ export async function applySettingsUpdateNormalizations(
   }
   if ('appIcon' in args) {
     sanitizedArgs.appIcon = normalizeAppIconId(args.appIcon)
+  }
+  if ('aiVaultSearch' in args) {
+    sanitizedArgs.aiVaultSearch = resolveAiVaultSearchSettings(args)
   }
   if ('terminalCustomThemes' in args) {
     sanitizedArgs.terminalCustomThemes = normalizeTerminalCustomThemes(args.terminalCustomThemes)
