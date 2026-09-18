@@ -1,6 +1,7 @@
 import type { SettingsSearchEntry } from './settings-search'
 import { translate } from '@/i18n/i18n'
 import { translateSearchKeyword } from './settings-search-keywords'
+import { getBrowserUserAgentSearchEntry } from './browser-user-agent-search'
 import {
   getBrowserLinkRoutingDescription,
   getTerminalLinkActionsDescription,
@@ -33,6 +34,10 @@ export function getTerminalLinkActionSearchKeywords(platform: BrowserShortcutPla
     ...translateSearchKeyword(
       'auto.components.settings.browser.search.terminalLinkActions.terminal',
       'terminal'
+    ),
+    ...translateSearchKeyword(
+      'auto.components.settings.browser.search.terminalLinkActions.chat',
+      'chat'
     ),
     ...translateSearchKeyword(
       'auto.components.settings.browser.search.terminalLinkActions.click',
@@ -182,7 +187,7 @@ export function getBrowserPaneSearchEntries(
     {
       title: translate(
         'auto.components.settings.BrowserTerminalLinkActionsSetting.title',
-        'Show terminal link actions'
+        'Show link actions'
       ),
       description: getTerminalLinkActionsDescription(platform),
       keywords: getTerminalLinkActionSearchKeywords(platform)
@@ -283,6 +288,7 @@ export function getBrowserPaneSearchEntries(
           'network'
         )
       ]
-    }
+    },
+    getBrowserUserAgentSearchEntry()
   ]
 }
