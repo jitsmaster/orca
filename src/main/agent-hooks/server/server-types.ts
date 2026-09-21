@@ -38,6 +38,8 @@ export type PersistedAgentHookEventPayload = Omit<
   | 'observation'
   // Same: a terminal handle is issued by one runtime and means nothing to the next.
   | 'terminalHandle'
+  // Why: live signal only, never durable truth — Claude's cwd at hook time is ephemeral context.
+  | 'cwd'
 > & {
   launchTokenHash?: string
 }
