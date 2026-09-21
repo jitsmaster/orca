@@ -69,4 +69,74 @@ describe('installSourceControlLiveWorktreeListener', () => {
     clearSourceControlLiveWorktreeListener()
     expect(listenerBox.current).toBeNull()
   })
+
+  it('only forwards the latest event when two resolutions for the same tab race out of order', async () => {
+    sendMock.mockClear()
+    let resolveFirst: (worktreeId: string) => void = () => {}
+    let resolveSecond: (worktreeId: string) => void = () => {}
+    resolveCwdWorktreeIdMock
+      .mockImplementationOnce(
+        () =>
+          new Promise<string>((resolve) => {
+            resolveFirst = resolve
+          })
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<string>((resolve) => {
+            resolveSecond = resolve
+          })
+      )
+    installSourceControlLiveWorktreeListener()
+
+    void listenerBox.current?.({ paneKey: 'tab-1:leaf-a', tabId: 'tab-1', cwd: '/repo/wt-stale' })
+    void listenerBox.current?.({ paneKey: 'tab-1:leaf-a', tabId: 'tab-1', cwd: '/repo/wt-fresh' })
+
+    // The second (fresher) event's resolution completes first...
+    resolveSecond('wt-fresh')
+    await Promise.resolve()
+    await Promise.resolve()
+    // ...then the first (stale) event's resolution completes after it.
+    resolveFirst('wt-stale')
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(sendMock).toHaveBeenCalledTimes(1)
+    expect(sendMock).toHaveBeenCalledWith('sourceControlLiveWorktree:set', {
+      paneKey: 'tab-1:leaf-a',
+      tabId: 'tab-1',
+      worktreeId: 'wt-fresh'
+    })
+  })
+
+  it('resets generation tracking on clear so a stale in-flight resolution cannot fire after re-install', async () => {
+    sendMock.mockClear()
+    resolveCwdWorktreeIdMock.mockClear()
+    let resolveStale: (worktreeId: string) => void = () => {}
+    resolveCwdWorktreeIdMock.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          resolveStale = resolve
+        })
+    )
+    installSourceControlLiveWorktreeListener()
+    void listenerBox.current?.({ paneKey: 'tab-1:leaf-a', tabId: 'tab-1', cwd: '/repo/wt-old' })
+
+    clearSourceControlLiveWorktreeListener()
+    resolveCwdWorktreeIdMock.mockResolvedValue('wt-new')
+    installSourceControlLiveWorktreeListener()
+    await listenerBox.current?.({ paneKey: 'tab-1:leaf-a', tabId: 'tab-1', cwd: '/repo/wt-new' })
+    await Promise.resolve()
+
+    resolveStale('wt-old')
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(sendMock).toHaveBeenCalledTimes(1)
+    expect(sendMock).toHaveBeenCalledWith('sourceControlLiveWorktree:set', {
+      paneKey: 'tab-1:leaf-a',
+      tabId: 'tab-1',
+      worktreeId: 'wt-new'
+    })
+  })
 })

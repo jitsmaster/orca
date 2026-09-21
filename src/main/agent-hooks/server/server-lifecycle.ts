@@ -104,6 +104,10 @@ export abstract class AgentHookServerLifecycle extends AgentHookServerRuntimeEnv
           // resolving cwd against the worktree catalog is async store work, so it runs only on
           // completed tool calls, not every hook event. Fires independently of applyNormalizedStatus
           // so a status-suppressed event still reports its (possibly changed) cwd.
+          // Why: only this live HTTP ingest path invokes the listener — spooled/replayed events
+          // drained on startup never trigger it, so after a restart a tab's picker stays on its
+          // last-known worktree until the next live PostToolUse. Accepted: the signal is
+          // deliberately ephemeral/live-only, never persisted.
           this.onClaudeLiveWorktreeCwd?.({
             paneKey: normalized.event.paneKey,
             tabId: normalized.event.tabId,
