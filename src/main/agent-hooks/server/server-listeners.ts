@@ -14,6 +14,7 @@ import type {
   AgentHookStatusChangeEntry,
   AgentHookStatusFreshnessObservation,
   EnrichedAgentHookEventPayload,
+  ServerClaudeLiveWorktreeCwdListener,
   StatusDropListener
 } from './server-types'
 import { toAgentStatusIpcPayload } from './server-status-identity'
@@ -97,6 +98,12 @@ export abstract class AgentHookServerListeners extends AgentHookServerState {
     listener: ((event: ClaudeStatusLineRateLimits) => void) | null
   ): void {
     this.onClaudeStatusLine = listener
+  }
+
+  /** Live cwd Claude reports on a completed tool call. Source Control panel's only consumer —
+   *  never routed through applyNormalizedStatus, never persisted, never folded into AgentStatusEntry. */
+  setClaudeLiveWorktreeCwdListener(listener: ServerClaudeLiveWorktreeCwdListener): void {
+    this.onClaudeLiveWorktreeCwd = listener
   }
 
   subscribeStatusChanges(listener: (statuses: AgentHookStatusChangeEntry[]) => void): () => void {

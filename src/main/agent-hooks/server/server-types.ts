@@ -137,3 +137,6 @@ export type NormalizedLocalHook = {
 
 export type ServerStatusLineListener = ((event: ClaudeStatusLineRateLimits) => void) | null
 export type ServerAgentStatusListener = ((payload: EnrichedAgentHookEventPayload) => void) | null
+export type ServerClaudeLiveWorktreeCwdListener =
+  | ((event: { paneKey: string; tabId?: string; cwd: string }) => void)
+  | null

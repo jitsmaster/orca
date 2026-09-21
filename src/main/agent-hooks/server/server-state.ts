@@ -40,6 +40,7 @@ import type {
   RetiredPaneAlias,
   RetiredPaneFence,
   ServerAgentStatusListener,
+  ServerClaudeLiveWorktreeCwdListener,
   ServerStatusLineListener,
   StatusChangeListener,
   StatusDropListener,
@@ -88,6 +89,7 @@ export abstract class AgentHookServerState {
   protected env = 'production'
   protected onAgentStatus: ServerAgentStatusListener = null
   protected onClaudeStatusLine: ServerStatusLineListener = null
+  protected onClaudeLiveWorktreeCwd: ServerClaudeLiveWorktreeCwdListener = null
   protected onPaneStatusCleared: PaneStatusClearListener | null = null
   protected paneStatusClearListeners = new Set<PaneStatusClearListener>()
   protected statusDropListeners = new Set<StatusDropListener>()
