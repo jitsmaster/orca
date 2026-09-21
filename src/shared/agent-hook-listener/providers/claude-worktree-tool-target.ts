@@ -6,6 +6,7 @@ const RESPONSE_KEY_BY_TOOL: Record<string, { fromInput: boolean; key: string }> 
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: asRecord treats any truthy object as a record; readString safely handles lookups on the result even for an array.
   return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {}
 }
 
