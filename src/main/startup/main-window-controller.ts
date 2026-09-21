@@ -29,6 +29,10 @@ import {
   clearMainWindowAgentStatusListeners,
   installMainWindowAgentStatusListeners
 } from './main-window-agent-status'
+import {
+  clearSourceControlLiveWorktreeListener,
+  installSourceControlLiveWorktreeListener
+} from './main-window-source-control-live-worktree'
 import { mainProcessState as state } from './main-process-state'
 import {
   clearExpectedRendererReload,
@@ -201,6 +205,7 @@ export function openMainWindow(options: { revealOnDidFinishLoad?: boolean } = {}
         minIntervalMs: AGENT_STATE_CRASH_BREADCRUMB_MIN_INTERVAL_MS
       })
   })
+  installSourceControlLiveWorktreeListener()
   window.on('closed', () => {
     if (state.mainWindow === window) {
       state.mainWindow = null
@@ -208,6 +213,7 @@ export function openMainWindow(options: { revealOnDidFinishLoad?: boolean } = {}
     clearExpectedRendererReload(rendererWebContentsId)
     state.automations?.setWebContents(null)
     clearMainWindowAgentStatusListeners()
+    clearSourceControlLiveWorktreeListener()
   })
   logStartupMilestone('load-start')
   loadMainWindow(window)
