@@ -141,6 +141,7 @@ export function normalizeHookPayload(
     launchToken,
     tabId,
     worktreeId,
+    cwd: source === 'claude' ? readString(hookPayloadRecord, 'cwd') : undefined,
     // Normalization is transport-agnostic; only ingestRemote knows the mux identity to stamp.
     connectionId: null,
     ...(restoredUnconfirmed ? { restoredUnconfirmed: true } : {}),

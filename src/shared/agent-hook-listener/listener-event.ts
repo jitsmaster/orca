@@ -10,6 +10,10 @@ export type AgentHookEventPayload = {
   launchToken?: string
   tabId?: string
   worktreeId?: string
+  /** Claude's live cwd on this hook event — the worktree root after EnterWorktree, or the new
+   *  directory after a plain `cd` (Anthropic hooks docs). Claude-only; never persisted; consumed
+   *  only by the Source Control panel's live-worktree signal, never by AgentStatusEntry. */
+  cwd?: string
   /** SSH connection the event arrived on, or null for local. Only `ingestRemote` can stamp it — the loopback HTTP path has no mux identity — and receivers key off it to drop
    *  in-flight events from a superseded connection after an SSH reconnect. */
   connectionId: string | null
