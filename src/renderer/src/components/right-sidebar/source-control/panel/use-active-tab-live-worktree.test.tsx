@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { cleanup, render, renderHook, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 type LiveWorktreeEvent = { paneKey: string; tabId: string; worktreeId: string }
