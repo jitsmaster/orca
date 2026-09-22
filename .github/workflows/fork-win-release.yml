@@ -38,6 +38,16 @@ jobs:
       NODE_OPTIONS: --max-old-space-size=4096
 
     steps:
+      - name: Checkout the built ref
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      # Why after checkout: package.json only exists on the runner once the ref is checked
+      # out; resolving the version before checkout throws MODULE_NOT_FOUND on a fresh runner
+      # and previously produced an empty "version=" output that silently reached the tag,
+      # title, and release notes as a malformed "v" release.
       - name: Resolve version
         id: version
         shell: bash
@@ -48,12 +58,6 @@ jobs:
           else
             echo "version=$(node -p "require('./package.json').version")" >>"$GITHUB_OUTPUT"
           fi
-
-      - name: Checkout the built ref
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ inputs.ref }}
-          persist-credentials: false
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
