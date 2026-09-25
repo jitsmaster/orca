@@ -12,7 +12,6 @@ import {
   AGENT_SESSION_HISTORY_MAX_LIMIT,
   type AgentSessionBackgroundTaskState,
   type AgentSessionSlashCommand,
-  type AgentSessionHandoffStatus,
   type AgentSessionSubscribeEvent,
   type AgentSessionTurnActivity
 } from '../../../shared/agent-session-wire'
@@ -22,6 +21,7 @@ import {
   createAgentSessionCatchUpReader,
   readAgentSessionHydrationPage
 } from './agent-session-history-page'
+import { rememberSessionActivity } from './structured-agent-session-activity-retention'
 
 export type AgentSessionSubscriberEmit = (event: AgentSessionSubscribeEvent) => void
 export type AgentSessionSubscribeInput = {
@@ -42,10 +42,8 @@ type Subscriber = {
 
 export type AgentSessionSubscribersHooks = {
   readCommands?: (sessionId: string) => AgentSessionSlashCommand[] | undefined
-  /** Fires after any publication that can change journal content, whether or not anyone
-   *  is subscribed to the transcript: session lists project status from this same edge. */
+  /** Fires after publications that can change journal content. */
   onJournalPublished?: (sessionId: string, journal: AgentSessionJournal) => void
-  /** Host wall clock, stamped once per published frame as `hostNow`. */
   now?: () => number
 }
 
@@ -55,8 +53,10 @@ export class AgentSessionSubscribers {
 
   constructor(private readonly hooks: AgentSessionSubscribersHooks = {}) {}
 
-  /** Opens the stream with a bounded tail page or, when the client's cursor
-   *  still resolves, with the rows it missed. Returns the disposer. */
+  get retainedActivityCountForTests(): number {
+    return this.activityBySession.size
+  }
+
   open(input: {
     id: string
     sessionId: string
@@ -64,7 +64,6 @@ export class AgentSessionSubscribers {
     fence: number
     emit: AgentSessionSubscriberEmit
     cursor?: AgentJournalCursor
-    handoff?: AgentSessionHandoffStatus
     backgroundTasks?: AgentSessionBackgroundTaskState | null
   }): () => void {
     const liveCursor = input.journal.cursor()
@@ -81,7 +80,7 @@ export class AgentSessionSubscribers {
 
     const hostNow = this.now()
     if (input.cursor) {
-      this.deliver(subscriber, input.journal, hostNow, input.handoff, true, input.backgroundTasks)
+      this.deliver(subscriber, input.journal, hostNow, true, input.backgroundTasks)
     } else {
       const page = readAgentSessionHydrationPage(input.journal, input.fence)
       this.emit(subscriber, {
@@ -90,7 +89,6 @@ export class AgentSessionSubscribers {
         page,
         fence: input.fence,
         hostNow,
-        ...(input.handoff ? { handoff: input.handoff } : {}),
         ...(input.backgroundTasks !== undefined ? { backgroundTasks: input.backgroundTasks } : {}),
         ...this.activityField(input.sessionId)
       })
@@ -113,7 +111,6 @@ export class AgentSessionSubscribers {
     }
   }
 
-  /** Fan out whatever each subscriber has not yet seen. */
   publish(
     sessionId: string,
     journal: AgentSessionJournal,
@@ -121,14 +118,14 @@ export class AgentSessionSubscribers {
   ): void {
     if (activity !== undefined) {
       if (activity) {
-        this.activityBySession.set(sessionId, activity)
+        rememberSessionActivity(this.activityBySession, sessionId, activity)
       } else {
         this.activityBySession.delete(sessionId)
       }
     }
     const hostNow = this.now()
     for (const subscriber of this.subscribers(sessionId)) {
-      this.deliver(subscriber, journal, hostNow, undefined, false, undefined, activity)
+      this.deliver(subscriber, journal, hostNow, false, undefined, activity)
     }
     if (activity === undefined) {
       this.hooks.onJournalPublished?.(sessionId, journal)
@@ -181,21 +178,6 @@ export class AgentSessionSubscribers {
     this.hooks.onJournalPublished?.(sessionId, journal)
   }
 
-  handoff(sessionId: string, fence: number, handoff: AgentSessionHandoffStatus): void {
-    const hostNow = this.now()
-    for (const subscriber of this.subscribers(sessionId)) {
-      this.emit(subscriber, {
-        type: 'batch',
-        sessionId,
-        batch: emptyAgentSessionBatch(subscriber.cursor),
-        fence,
-        handoff,
-        hostNow
-      })
-      subscriber.fence = fence
-    }
-  }
-
   backgroundTasks(
     sessionId: string,
     state: AgentSessionBackgroundTaskState | null,
@@ -223,7 +205,6 @@ export class AgentSessionSubscribers {
     subscriber: Subscriber,
     journal: AgentSessionJournal,
     hostNow: number,
-    handoff?: AgentSessionHandoffStatus,
     emitCheckpoint = false,
     backgroundTasks?: AgentSessionBackgroundTaskState | null,
     activity?: AgentSessionTurnActivity | null
@@ -249,7 +230,6 @@ export class AgentSessionSubscribers {
           page,
           fence: subscriber.fence,
           hostNow,
-          ...(handoff ? { handoff } : {}),
           ...(backgroundTasks !== undefined ? { backgroundTasks } : {}),
           ...(publishedActivity !== undefined ? { activity: publishedActivity } : {})
         })
@@ -262,14 +242,13 @@ export class AgentSessionSubscribers {
         const commandsChanged =
           this.hooks.readCommands !== undefined &&
           (this.hooks.readCommands(subscriber.sessionId) ?? null) !== subscriber.commands
-        if (handoff || emitCheckpoint || publishedActivity !== undefined || commandsChanged) {
+        if (emitCheckpoint || publishedActivity !== undefined || commandsChanged) {
           this.emit(subscriber, {
             type: 'batch',
             sessionId: subscriber.sessionId,
             batch: emptyAgentSessionBatch(page.window.nextCursor),
             fence: subscriber.fence,
             hostNow,
-            ...(handoff ? { handoff } : {}),
             ...(backgroundTasks !== undefined ? { backgroundTasks } : {}),
             ...(publishedActivity !== undefined ? { activity: publishedActivity } : {})
           })
@@ -287,7 +266,6 @@ export class AgentSessionSubscribers {
         },
         fence: subscriber.fence,
         hostNow,
-        ...(handoff ? { handoff } : {}),
         ...(backgroundTasks !== undefined ? { backgroundTasks } : {}),
         ...(publishedActivity !== undefined ? { activity: publishedActivity } : {})
       })

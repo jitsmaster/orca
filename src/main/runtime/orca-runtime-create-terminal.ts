@@ -78,7 +78,6 @@ export class OrcaRuntimeWithCreateTerminal extends OrcaRuntimeWithTerminalCreate
           ...launchOpts.env,
           ...(launchToken ? { ORCA_AGENT_LAUNCH_TOKEN: launchToken } : {})
         }
-        const claudeAgentTeamsMode = this.store?.getSettings?.().claudeAgentTeamsMode
         let agentTeamsPlan: Awaited<ReturnType<typeof dependencies.buildClaudeAgentTeamsLaunchPlan>>
         let sequencedStartupCommand: string | undefined
         let effectiveLaunchConfig = launchOpts.launchConfig
@@ -87,7 +86,7 @@ export class OrcaRuntimeWithCreateTerminal extends OrcaRuntimeWithTerminalCreate
             launchConfig: launchOpts.launchConfig,
             command: launchOpts.command,
             claudeAgentTeamsSourceCommand: launchOpts.claudeAgentTeamsSourceCommand,
-            claudeAgentTeamsMode,
+            claudeAgentTeamsMode: this.store?.getSettings?.().claudeAgentTeamsMode,
             baseEnv: { ...process.env, ...baseEnv },
             adoptedBeforeLaunch,
             createTeamEnv: (shimDir, shimBin) =>
@@ -149,6 +148,7 @@ export class OrcaRuntimeWithCreateTerminal extends OrcaRuntimeWithTerminalCreate
             leafId,
             ...(launchOpts.shellOverride ? { shellOverride: launchOpts.shellOverride } : {}),
             ...(terminalColorQueryReplies ? { terminalColorQueryReplies } : {}),
+            terminalKittyKeyboardProtocol: launchOpts.terminalKittyKeyboardProtocol,
             ...(launchOpts.agentSessionClaim
               ? {
                   agentSessionEnsure: {
@@ -172,7 +172,7 @@ export class OrcaRuntimeWithCreateTerminal extends OrcaRuntimeWithTerminalCreate
             ...(adoptedBeforeLaunch ? { adoptedStablePane: adoptedBeforeLaunch } : {}),
             ...(launchOpts.sessionId ? { sessionId: launchOpts.sessionId } : {}),
             ...(!adoptedBeforeLaunch && launchOpts.isNewSession ? { isNewSession: true } : {}),
-            persistHostSessionBinding: true
+            ...dependencies.BACKGROUND_TERMINAL_SPAWN_FLAGS
           })
         } finally {
           releaseStablePaneCreate?.()
@@ -180,7 +180,8 @@ export class OrcaRuntimeWithCreateTerminal extends OrcaRuntimeWithTerminalCreate
         if (!result.stablePaneOwner) {
           reportPtySpawnCommitted()
         }
-        const adoptedStablePane = Boolean(result.stablePaneOwner)
+        // Why here: refused before a handle, snapshot or reveal could pose the live PTY as new.
+        const adoptedStablePane = dependencies.admitStablePaneAdoption(result, launchOpts)
         if (result.agentSessionEnsure) {
           const canonicalSurface = result.agentSessionEnsure.owner.surface
           preAllocatedHandle = canonicalSurface.terminalHandle
@@ -211,12 +212,6 @@ export class OrcaRuntimeWithCreateTerminal extends OrcaRuntimeWithTerminalCreate
           terminalHandle: preAllocatedHandle,
           ...(result.incarnationId ? { incarnationId: result.incarnationId } : {})
         })
-        if (launchOpts.structuredAgentSessionId) {
-          dependencies.agentSessionPtyWriteGate.bindPty(
-            result.id,
-            launchOpts.structuredAgentSessionId
-          )
-        }
         const pty = this.getOrCreatePtyWorktreeRecord(result.id)
         if (pty) {
           pty.runtimeSessionOwned = true

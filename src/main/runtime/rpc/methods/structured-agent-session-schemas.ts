@@ -9,11 +9,11 @@ export {
   CreateIntentParams,
   CreateParams,
   CreateSupportParams,
-  HandoffParams,
   HandoffStatusParams,
   HistoryParams,
   HoldParams,
   JournalCursor,
+  ModelCatalogParams,
   MutationEnvelope,
   OptionsParams,
   RespondParams,
@@ -24,5 +24,6 @@ export {
   SessionId,
   SetOptionParams,
   SubscribeParams,
+  ThreadGoalParams,
   UnsubscribeParams
 } from '../../../../shared/rpc-contract/structured-agent-session-params'

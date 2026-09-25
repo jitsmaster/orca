@@ -19,6 +19,10 @@ import { inspectPtyChildProcesses, processHasChildren } from './pty-child-proces
 import { getRelayShellLaunchConfig, isRelayWslShell } from './pty-shell-launch'
 import { RetiredPaneSurfaceRegistry } from './retired-pane-surfaces'
 import { addWslEnvKeys } from '../shared/wsl-env'
+import {
+  ORCA_IMAGE_PROTOCOL_ENV,
+  ORCA_IMAGE_PROTOCOL_VALUE
+} from '../shared/terminal-image-protocol'
 import { SHELL_STARTUP_FEATURE_ENV } from '../main/shell-startup-features'
 import { DEFAULT_SSH_RELAY_GRACE_PERIOD_SECONDS } from '../shared/ssh-types'
 import { shouldUseShellReadyStartupDelivery } from '../shared/codex-startup-delivery'
@@ -59,6 +63,7 @@ import { forceKillPosixPtyProcessGroups } from '../main/pty/posix-pty-process-gr
 import type { PtyChildProcessVerdict } from '../shared/terminal-process-inspection'
 import { terminatePtyJob } from '../main/windows/windows-pty-job'
 import { stripInheritedBuildModeEnv } from '../main/pty/build-mode-env'
+import { stripPiProcessOwnerEnv } from '../main/pty/pi-process-owner-env'
 import { stripLegacyTerminalShimEnv } from '../main/pty/legacy-terminal-shim-dir'
 import { dropIncoherentCondaActivationEnv } from '../main/pty/conda-activation-env'
 import { dropInheritedOrcaFishHistory } from '../main/fish-history-session'
@@ -487,7 +492,7 @@ export type PtyEnvAugmenter = (ctx: {
   env: Record<string, string>
   command?: string
   launchAgent?: TuiAgent
-}) => Record<string, string>
+}) => Record<string, string> | Promise<Record<string, string>>
 
 export type RelayPtyWorktreeRemovalCoordinator = {
   beginWorktreePtySpawn(operationPath: string): () => void
@@ -779,7 +784,7 @@ export class PtyHandler {
   }
 
   /** Build augmented spawn env; augmenter values win over process.env/renderer env. Shared by spawn()/revive() so precedence can't drift. */
-  private buildSpawnEnv(
+  private async buildSpawnEnv(
     rendererEnv: Record<string, string> | undefined,
     ctx: {
       id: string
@@ -789,7 +794,7 @@ export class PtyHandler {
       launchAgent?: TuiAgent
     },
     envToDelete: readonly string[] = []
-  ): Record<string, string> {
+  ): Promise<Record<string, string>> {
     const baseEnv = mergeGitConfigEnvProtocol(
       {
         ...stripInheritedBuildModeEnv(process.env),
@@ -805,7 +810,7 @@ export class PtyHandler {
     const augmented: Record<string, string> = {}
     for (const augmenter of this.envAugmenters) {
       try {
-        Object.assign(augmented, augmenter({ ...ctx, env: baseEnv }))
+        Object.assign(augmented, await augmenter({ ...ctx, env: baseEnv }))
       } catch (err) {
         process.stderr.write(
           `[pty-handler] env augmenter threw: ${err instanceof Error ? err.message : String(err)}\n`
@@ -813,8 +818,10 @@ export class PtyHandler {
       }
     }
     const result = mergeGitConfigEnvProtocol(baseEnv, augmented) as Record<string, string>
+    result[ORCA_IMAGE_PROTOCOL_ENV] = ORCA_IMAGE_PROTOCOL_VALUE
     // Why: an older client may not ask a newly upgraded relay to delete inherited shim state.
     stripLegacyTerminalShimEnv(result, process.platform)
+    stripPiProcessOwnerEnv(result)
     // Why unconditionally here, not in injectRelayFishHistoryEnv: that runs only for a
     // fish pane with isolation on, yet an Orca-minted `fish_history` (fish EXPORTS it,
     // so the relay inherits one when launched from an Orca fish pane) must never scope
@@ -1871,7 +1878,7 @@ export class PtyHandler {
       typeof params.terminalWindowsWslDistro === 'string' ? params.terminalWindowsWslDistro : null
     const commandDelivery = params.commandDelivery === 'provider' ? 'provider' : 'renderer'
     const shouldProviderDeliverCommand = commandDelivery === 'provider' && command !== undefined
-    const spawnEnv = this.buildSpawnEnv(
+    const spawnEnv = await this.buildSpawnEnv(
       env,
       { id, paneKey, shell, command, launchAgent },
       envToDelete
@@ -1885,10 +1892,13 @@ export class PtyHandler {
       injectRelayFishHistoryEnv(spawnEnv, worktreeId)
     }
     const wslShell = isRelayWslShell(shell)
+    if (wslShell) {
+      // WSLENV is the only channel that carries a host env var into the guest.
+      addWslEnvKeys(spawnEnv, [ORCA_IMAGE_PROTOCOL_ENV])
+    }
     if (historyIsolationEnabled && worktreeId) {
       const historyRoot = injectRelayHistoryEnv(spawnEnv, worktreeId, shell, { wsl: wslShell })
       if (wslShell && historyRoot) {
-        // WSLENV is the only channel that carries a host env var into the guest.
         addWslEnvKeys(spawnEnv, ['HISTFILE'])
       }
     }
@@ -3012,7 +3022,7 @@ export class PtyHandler {
         ? entry.terminalWindowsWslDistro
         : null
     const historyIsolationEnabled = entry.historyIsolationEnabled === true
-    const spawnEnv = this.buildSpawnEnv(
+    const spawnEnv = await this.buildSpawnEnv(
       revivedEnv,
       { id: entry.id, paneKey: entry.paneKey, shell },
       envToDelete
@@ -3023,6 +3033,9 @@ export class PtyHandler {
       basename(shell).toLowerCase().startsWith('fish')
     ) {
       injectRelayFishHistoryEnv(spawnEnv, entry.worktreeId)
+    }
+    if (wslShell) {
+      addWslEnvKeys(spawnEnv, [ORCA_IMAGE_PROTOCOL_ENV])
     }
     if (historyIsolationEnabled && entry.worktreeId) {
       const historyRoot = injectRelayHistoryEnv(spawnEnv, entry.worktreeId, shell, {

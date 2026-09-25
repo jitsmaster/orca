@@ -1,6 +1,6 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
 import { defaultAgentChatLabel } from '../../shared/agent-session-chat-label'
-import { OrcaRuntimeWithResolveRecoveredStructuredTuiTranscript } from './orca-runtime-resolve-recovered-structured-tui-transcript'
+import { OrcaRuntimeWithGetStructuredAgentSessionCreateSupport } from './orca-runtime-get-structured-agent-session-create-support'
 import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
 import { replaceConversationInSnapshot } from './structured-conversation-tab-replacement'
 import type { ConversationReplacement } from '../native-chat/agent-session-wire/structured-conversation-command'
@@ -16,8 +16,9 @@ import { DEFAULT_REPO_SEARCH_REFS_LIMIT } from './orca-runtime-postlude'
 import type { Repo } from '../../shared/repo-types'
 import type { GitAdmissionTier } from '../git/command-runner/git-exec-options'
 import {
-  getLocalProjectWorktreeGitOptions,
-  resolveLocalProjectRuntimeForRepo
+  getLocalProjectGhExecOptions,
+  resolveLocalProjectRuntimeForRepo,
+  type LocalProjectGhExecOptions
 } from '../project-runtime-git-options'
 import { getAgentLaunchPlatformForRepo } from './runtime-agent-launch-resolution'
 import type { TerminalWorkspaceLaunchScope } from './runtime-legacy-worker-terminal-recovery-types'
@@ -26,7 +27,7 @@ import { isWslUncPath } from '../../shared/wsl-paths'
 import { parseAppSshPtyId } from '../../shared/ssh-pty-id'
 import type { PtyProcessInspection } from '../providers/pty-process-inspection'
 
-export class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce extends OrcaRuntimeWithResolveRecoveredStructuredTuiTranscript {
+export class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce extends OrcaRuntimeWithGetStructuredAgentSessionCreateSupport {
   async replaceStructuredAgentSessionTab(replacement: ConversationReplacement): Promise<void> {
     const prior = this.mobileSessionTabsByWorktree.get(replacement.workspaceId)
     const next = prior ? replaceConversationInSnapshot(prior, replacement) : null
@@ -239,12 +240,7 @@ export class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce extends OrcaRu
     repo: Repo,
     admissionTier?: GitAdmissionTier
   ):
-    | {
-        localGitExecOptions: {
-          wslDistro?: string
-          admissionTier?: GitAdmissionTier
-        }
-      }
+    | { localGitExecOptions: LocalProjectGhExecOptions & { admissionTier?: GitAdmissionTier } }
     | undefined {
     const localGitOptions = {
       ...this.getLocalGitExecutionOptionArgs(repo)[0],
@@ -255,8 +251,8 @@ export class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce extends OrcaRu
       : undefined
   }
 
-  protected getLocalGitExecutionOptionArgs(repo: Repo): [] | [{ wslDistro?: string }] {
-    const localGitOptions = getLocalProjectWorktreeGitOptions(this.requireStore(), repo)
+  protected getLocalGitExecutionOptionArgs(repo: Repo): [] | [LocalProjectGhExecOptions] {
+    const localGitOptions = getLocalProjectGhExecOptions(this.requireStore(), repo)
     return Object.keys(localGitOptions).length > 0 ? [localGitOptions] : []
   }
 

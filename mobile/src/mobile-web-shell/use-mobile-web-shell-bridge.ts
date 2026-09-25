@@ -4,43 +4,27 @@ import type {
   OrcaMobileWebShellViewHandle
 } from '../../modules/orca-mobile-web-shell/src'
 import { useHostClient } from '../transport/client-context'
-import { createBridgeHost, type BridgeHost, type BridgeHostDiagnostic } from './bridge-host'
-import type { MobileWebShellSessionState } from './mobile-web-shell-session-contract'
+import { createBridgeDiagnosticReporter } from './bridge-diagnostic-log'
+import type { BridgeInitRoute } from './bridge/bridge-envelope'
+import type { BridgeClearableRouteParam } from './bridge/bridge-route-update'
+import type { BridgeSafeAreaInsets } from './bridge/bridge-safe-area-insets'
+import type { BridgeHapticsKind } from './bridge/bridge-haptics-notify'
+import { createBridgeHost, type BridgeHost } from './bridge-host'
+import type { BridgeSessionBack } from './bridge-host-back'
+import type { BridgeNavigateBackOutcome } from './bridge-host-contract'
+import type { BridgeNativeVerb } from './bridge/bridge-native-verbs'
+import type { BridgeErrorCapture } from './bridge/bridge-error-capture'
+import type {
+  MobileWebShellSessionState,
+  PageReadyDeclaration
+} from './mobile-web-shell-session-contract'
+import type { PageHostSnapshot } from './use-page-host-snapshot'
+import type { PageStorageForInit } from './page-storage-keys'
 
 class BridgeViewGoneError extends Error {
   constructor() {
     super('the shell view for this session is not mounted')
     this.name = 'BridgeViewGoneError'
-  }
-}
-
-/**
- * One line per kind, for the life of one host.
- *
- * A page that is failing frames fails all of them, and a line each buries the first — the one that
- * says why. The host already holds `post-failed` to one; this is the same bound for the kinds it
- * does not, and a new host starts the count over because a new page is new evidence.
- */
-function createBridgeDiagnosticReporter(): (diagnostic: BridgeHostDiagnostic) => void {
-  const reported = new Set<BridgeHostDiagnostic['kind']>()
-  return (diagnostic) => {
-    if (reported.has(diagnostic.kind)) {
-      return
-    }
-    reported.add(diagnostic.kind)
-    if (diagnostic.kind === 'refused') {
-      console.warn('[web-shell-bridge] refused a page frame', diagnostic.refusal)
-      return
-    }
-    if (diagnostic.kind === 'post-failed') {
-      console.warn('[web-shell-bridge] the page could not be posted to', diagnostic.error)
-      return
-    }
-    if (diagnostic.kind === 'notify-failed') {
-      console.warn('[web-shell-bridge] the client threw on a page notification', diagnostic.error)
-      return
-    }
-    console.warn('[web-shell-bridge] a view outlived its host and is still posting')
   }
 }
 
@@ -52,6 +36,8 @@ function createBridgeDiagnosticReporter(): (diagnostic: BridgeHostDiagnostic) =>
  */
 type MountedView = { sessionId: string; handle: OrcaMobileWebShellViewHandle }
 type MountedHost = { sessionId: string; host: BridgeHost }
+/** What a retiring host established, and the session it established it for. */
+type EstablishedBack = { sessionId: string; back: BridgeSessionBack }
 
 /** Exactly the field the handler reads. The view's own `NativeSyntheticEvent` prop type is
  *  assignable to this, and a handler declared this narrowly is one a test can call honestly. */
@@ -69,6 +55,78 @@ export type MobileWebShellBridgeView = {
   readonly bridgeEnabled: boolean
   readonly viewRef: (handle: OrcaMobileWebShellViewHandle | null) => void
   readonly onBridgeMessage: (event: MobileWebShellBridgeMessageEvent) => void
+  /**
+   * Hands the mounted host a rewritten route for the screen it is already serving. Dropped when
+   * there is no host yet; the route the host is built from carries it instead.
+   */
+  readonly publishRoute: (route: BridgeInitRoute) => void
+  /** Hands the mounted host moved safe-area insets; dropped with no host, as a route is. */
+  readonly publishSafeAreaInsets: (insets: BridgeSafeAreaInsets) => void
+  /**
+   * Hands the mounted host one Back press. False when there is no host, or when the document it
+   * serves never said it takes one — the caller then leaves the key to the navigator.
+   */
+  readonly sendBack: () => boolean
+}
+
+/** Everything one render of the screen hands the bridge. Named rather than inline because the host
+ *  is built against the whole object, read back through one ref. */
+export type MobileWebShellBridgeArgs = {
+  hostId: string
+  session: MobileWebShellSessionState
+  /**
+   * Whether this session has already handshaken, as the reducer that owns it records it.
+   *
+   * A host is rebuilt when the client under it changes and the page is never told: the session id
+   * does not move, so it neither handshakes again nor hears that the shell was replaced. The fact
+   * is about the session rather than this mount, so it arrives with the render.
+   */
+  sessionEstablished: boolean
+  /** The screen the page is standing in for, which the document's own `/` cannot tell it. */
+  route: BridgeInitRoute
+  /** What the first `init` of a new host carries; later moves go through `publishSafeAreaInsets`. */
+  safeAreaInsets: BridgeSafeAreaInsets
+  /** The route patterns the page keeps for itself; everything else comes back as `navigate`. */
+  pageRoutes: readonly string[]
+  pageRouteGrants: readonly { pathname: string; grants: readonly string[] }[]
+  /** What this route declared, which is what `init` grants and what every grant check reads. */
+  routeGrants: readonly string[]
+  /** Opens a screen the page does not render, over the still-mounted view. */
+  onNavigate: (href: string) => void
+  /** Opens a URL outside the app, on the page's behalf. */
+  onExternalLink: (url: string) => void
+  /** Plays one haptic on this device, on the page's behalf. */
+  onHaptic: (kind: BridgeHapticsKind) => void
+  /** Serves one `native.` verb on this device, for a page that was granted it. */
+  serveNativeVerb: (verb: BridgeNativeVerb, params: unknown) => Promise<unknown>
+  /** Pops the stack this page was pushed onto, and says so when it did not. */
+  onNavigateBack: () => BridgeNavigateBackOutcome
+  /**
+   * This host and its stored keys, or null while they are being read. No host is built without
+   * them: `init` is answered once per `ready` and carries both, so a host that started without
+   * them would have to be torn down to carry them, and the page would have mounted its list
+   * against a host it could not name.
+   */
+  snapshot: PageHostSnapshot | null
+  /** The allowlisted keys as the app holds them, asked for on each `init` rather than at mount. */
+  readStorage: () => PageStorageForInit
+  onStorageWrite: (key: string, value: string | null) => void
+  /** The page could not render the generation on screen. Reported, never recovered from here. */
+  onPageFault: (error: BridgeErrorCapture) => void
+  /** The page asked for a session, and what it declared it reports. Reported so the screen can
+   *  stop waiting for it, and so it knows whether a paint report is coming. */
+  onPageReady: (ready: PageReadyDeclaration) => void
+  /** The page has a frame on screen, from a page that said it would report one. */
+  onPagePainted: () => void
+  /** The page is holding the device Back key, or has let it go. False arrives on its own for
+   *  every way a document ends, so no claim outlives the page that made it. */
+  onPageBackClaim: (claimed: boolean) => void
+  /** The page applied a one-shot route param and asks for it to be erased (ruling 34). */
+  onRouteParamClear: (param: BridgeClearableRouteParam, value: string) => void
+  /** This shell named a screen the protocol does not allow, so no session is served. */
+  onRouteRefused: (issue: string) => void
+  /** Every screencast frame this host has dropped, so the shell can show the running total. */
+  onBinaryFramesDropped: (total: number) => void
 }
 
 /**
@@ -78,41 +136,109 @@ export type MobileWebShellBridgeView = {
  * The session id is B4's — a remount is a new one, which is what makes a dead page's frames fail
  * the native origin check rather than reach a live client.
  */
-export function useMobileWebShellBridge(args: {
-  hostId: string
-  session: MobileWebShellSessionState
-}): MobileWebShellBridgeView {
-  const { client } = useHostClient(args.hostId)
+export function useMobileWebShellBridge(args: MobileWebShellBridgeArgs): MobileWebShellBridgeView {
+  const { client, clientId } = useHostClient(args.hostId)
   const ready = args.session.kind === 'ready' ? args.session : null
   const sessionId = ready?.sessionId ?? null
   const buildId = ready?.buildId ?? null
   const viewRef = useRef<MountedView | null>(null)
   const hostRef = useRef<MountedHost | null>(null)
+  /**
+   * The device Back key across a host rebuild, which is the one thing here that outlives a host.
+   *
+   * A client swapped under a live page is not a new document: the WebView stays mounted, the
+   * session id does not move, and the page neither handshakes again nor hears that anything
+   * happened. Stamped with its session for the reason the two refs above are — a record left by
+   * one session must not seed the next one's host.
+   */
+  const establishedBackRef = useRef<EstablishedBack | null>(null)
+  /**
+   * Every prop, held rather than depended on: the host is built once per session, and a caller's
+   * fresh closures and inline objects every render must not tear one down and settle its pendings.
+   *
+   * The route in it is not the whole story any more (ruling 33.1). A same-path param change used
+   * to be unreachable — the page routes once, before its first render, so a route that changed
+   * afterwards had nothing left to change, and every switch keyed on the whole route to make one
+   * a remount. The session switch does not: a notification tap for another pane of the session on
+   * screen is a tab switch, so it keeps `paneKey` out of its key and hands the change to
+   * `publishRoute` below, which re-sends `init` to a page that said it takes one.
+   */
+  const argsRef = useRef(args)
+  // Held rather than depended on, for the reason every prop above is: the identity settles with the
+  // client, and taking it as a dependency would tear a live page session down to re-read a string.
+  const clientIdRef = useRef(clientId)
+  // Commit-phase and declared above the host's effect, so the host is built against what this
+  // render passed: a native frame can land between a commit and a passive effect.
+  //
+  // No dependency list, rather than one holding `args`: a caller builds that object inline, so
+  // every render is a new one and there is nothing to compare. This runs after each commit, which
+  // is what the ref is for.
+  useLayoutEffect(() => {
+    argsRef.current = args
+    clientIdRef.current = clientId
+  })
+  const snapshot = args.snapshot
 
   // Commit-phase, not passive: a native frame that arrives between the two carries the session id
   // the handler is fenced on, so only handing the host over here keeps it off the retired client.
   useLayoutEffect(() => {
-    if (client === null || sessionId === null || buildId === null) {
+    if (client === null || sessionId === null || buildId === null || snapshot === null) {
       return
     }
+    const latest = argsRef.current
+    // The host outlives every render after this one, so each callback it holds reads the ref at
+    // call time: a closure captured here would settle frames into a screen that has moved on, and
+    // adding one is an entry in `MobileWebShellBridgeArgs` and a line here, nothing else.
     const host = createBridgeHost({
       client,
       buildId,
       sessionId,
+      route: latest.route,
+      safeAreaInsets: latest.safeAreaInsets,
+      pageRoutes: latest.pageRoutes,
+      pageRouteGrants: latest.pageRouteGrants,
+      routeGrants: latest.routeGrants,
+      sessionEstablished: latest.sessionEstablished,
+      ...(establishedBackRef.current?.sessionId === sessionId
+        ? { sessionBack: establishedBackRef.current.back }
+        : {}),
+      host: snapshot.host,
+      readClientIdentity: () => clientIdRef.current,
       post: (json) => {
         const mounted = viewRef.current
         return mounted === null || mounted.sessionId !== sessionId
           ? Promise.reject(new BridgeViewGoneError())
           : mounted.handle.postBridgeMessage(json)
       },
-      onDiagnostic: createBridgeDiagnosticReporter()
+      onDiagnostic: createBridgeDiagnosticReporter(),
+      onNavigate: (href) => argsRef.current.onNavigate(href),
+      onNavigateBack: () => argsRef.current.onNavigateBack(),
+      onExternalLink: (url) => argsRef.current.onExternalLink(url),
+      onHaptic: (kind) => argsRef.current.onHaptic(kind),
+      serveNativeVerb: (verb, params) => argsRef.current.serveNativeVerb(verb, params),
+      readStorage: () => argsRef.current.readStorage(),
+      onStorageWrite: (key, value) => argsRef.current.onStorageWrite(key, value),
+      onPageFault: (error) => argsRef.current.onPageFault(error),
+      onRouteParamClear: (param, value) => argsRef.current.onRouteParamClear(param, value),
+      onRouteRefused: (issue) => argsRef.current.onRouteRefused(issue),
+      onBinaryFramesDropped: (total) => argsRef.current.onBinaryFramesDropped(total),
+      onPageReady: (ready) => argsRef.current.onPageReady(ready),
+      onPagePainted: () => argsRef.current.onPagePainted(),
+      onPageBackClaim: (claimed) => argsRef.current.onPageBackClaim(claimed)
     })
     hostRef.current = { sessionId, host }
+    // The count belongs to this host, so a rebuild starts it over. Without this the screen keeps
+    // the retired host's number and the next drop reports the new host's first, so the line falls —
+    // which reads as frames coming back rather than as a fresh count.
+    latest.onBinaryFramesDropped(0)
     return () => {
+      // Read before the teardown and stamped with the session, so a replacement built for this
+      // same document takes the key over rather than refusing the first press on it.
+      establishedBackRef.current = { sessionId, back: host.readSessionBack() }
       hostRef.current = null
       host.dispose()
     }
-  }, [buildId, client, sessionId])
+  }, [buildId, client, sessionId, snapshot])
 
   return {
     bridgeEnabled: ready !== null,
@@ -131,6 +257,38 @@ export function useMobileWebShellBridge(args: {
         mounted.host.receive(event.nativeEvent.json)
       },
       [sessionId]
-    )
+    ),
+    // Fenced on the session the same way inbound frames are: a host left over from a session this
+    // render has moved past must not be handed this one's route.
+    //
+    // Keyed on everything the host is built from, not on the session alone: a caller that holds a
+    // route the host was not there to take retries when this identity changes, and the host's own
+    // effect is a layout effect, so by the time a passive effect sees the new identity the host
+    // behind it exists.
+    publishRoute: useCallback(
+      (route: BridgeInitRoute) => {
+        const mounted = hostRef.current
+        if (mounted !== null && mounted.sessionId === sessionId) {
+          mounted.host.publishRoute(route)
+        }
+      },
+      [buildId, client, sessionId, snapshot]
+    ),
+    publishSafeAreaInsets: useCallback(
+      (insets: BridgeSafeAreaInsets) => {
+        const mounted = hostRef.current
+        if (mounted !== null && mounted.sessionId === sessionId) {
+          mounted.host.publishSafeAreaInsets(insets)
+        }
+      },
+      [buildId, client, sessionId, snapshot]
+    ),
+    // Fenced on the session the way inbound frames are, and answering false rather than throwing
+    // when there is no host: the caller is a hardware key handler, and a press it cannot forward
+    // is one the navigator has to be left to answer.
+    sendBack: useCallback(() => {
+      const mounted = hostRef.current
+      return mounted !== null && mounted.sessionId === sessionId && mounted.host.sendBack()
+    }, [sessionId])
   }
 }
