@@ -145,6 +145,8 @@ import type {
   ShutdownRequest,
   PingRequest,
   GetRetainedPaneDescendantsRequest,
+  SystemResolverHealthRequest,
+  PtySpawnHealthRequest,
   GetSnapshotRequest,
   GetSizeRequest
 } from './daemon-simple-request-protocol'
