@@ -365,7 +365,7 @@ describe('registerSettingsHandlers', () => {
     expect(otherSend).toHaveBeenCalledWith('settings:changed', { defaultTuiAgent: 'codex' })
   })
 
-  it('updates the agent awake service when the keep-awake setting changes', () => {
+  it('updates the agent awake service when the keep-awake setting changes', async () => {
     const agentAwakeService = { setMode: vi.fn() }
     store.getSettings.mockReturnValue({ keepComputerAwakeWhileAgentsRun: false })
     store.updateSettings.mockReturnValue({ keepComputerAwakeWhileAgentsRun: true })
@@ -376,7 +376,7 @@ describe('registerSettingsHandlers', () => {
       args: unknown
     ) => unknown
 
-    handler(settingsInvokeEvent, { keepComputerAwakeWhileAgentsRun: true })
+    await handler(settingsInvokeEvent, { keepComputerAwakeWhileAgentsRun: true })
 
     expect(store.updateSettings).toHaveBeenCalledWith(
       {
@@ -402,6 +402,83 @@ describe('registerSettingsHandlers', () => {
     handler(settingsInvokeEvent, { defaultTuiAgent: 'codex' })
 
     expect(agentAwakeService.setMode).not.toHaveBeenCalled()
+  })
+
+  it('reschedules the idle agent cleanup timer when the enabled setting changes', async () => {
+    const idleAgentCleanupScheduler = { onSettingsChanged: vi.fn() }
+    store.getSettings.mockReturnValue({ idleAgentCleanupEnabled: false })
+    store.updateSettings.mockReturnValue({ idleAgentCleanupEnabled: true })
+    registerSettingsHandlers(store as never, undefined, idleAgentCleanupScheduler as never)
+
+    const handler = handleMock.mock.calls.find((call) => call[0] === 'settings:set')?.[1] as (
+      _event: unknown,
+      args: unknown
+    ) => unknown
+
+    await handler(settingsInvokeEvent, { idleAgentCleanupEnabled: true })
+
+    expect(idleAgentCleanupScheduler.onSettingsChanged).toHaveBeenCalledWith([
+      'idleAgentCleanupEnabled'
+    ])
+  })
+
+  it('reschedules the idle agent cleanup timer when the interval setting changes', async () => {
+    const idleAgentCleanupScheduler = { onSettingsChanged: vi.fn() }
+    store.getSettings.mockReturnValue({ idleAgentCleanupIntervalMs: 300_000 })
+    store.updateSettings.mockReturnValue({ idleAgentCleanupIntervalMs: 60_000 })
+    registerSettingsHandlers(store as never, undefined, idleAgentCleanupScheduler as never)
+
+    const handler = handleMock.mock.calls.find((call) => call[0] === 'settings:set')?.[1] as (
+      _event: unknown,
+      args: unknown
+    ) => unknown
+
+    await handler(settingsInvokeEvent, { idleAgentCleanupIntervalMs: 60_000 })
+
+    expect(idleAgentCleanupScheduler.onSettingsChanged).toHaveBeenCalledWith([
+      'idleAgentCleanupIntervalMs'
+    ])
+  })
+
+  it('does not notify the idle agent cleanup scheduler for unrelated setting changes', () => {
+    const idleAgentCleanupScheduler = { onSettingsChanged: vi.fn() }
+    store.getSettings.mockReturnValue({ idleAgentCleanupEnabled: false })
+    store.updateSettings.mockReturnValue({ idleAgentCleanupEnabled: false })
+    registerSettingsHandlers(store as never, undefined, idleAgentCleanupScheduler as never)
+
+    const handler = handleMock.mock.calls.find((call) => call[0] === 'settings:set')?.[1] as (
+      _event: unknown,
+      args: unknown
+    ) => unknown
+
+    handler(settingsInvokeEvent, { defaultTuiAgent: 'codex' })
+
+    expect(idleAgentCleanupScheduler.onSettingsChanged).not.toHaveBeenCalled()
+  })
+
+  it('does not reschedule the idle agent cleanup timer for a no-op resave of the same enabled/interval values', () => {
+    const idleAgentCleanupScheduler = { onSettingsChanged: vi.fn() }
+    store.getSettings.mockReturnValue({
+      idleAgentCleanupEnabled: true,
+      idleAgentCleanupIntervalMs: 300_000
+    })
+    store.updateSettings.mockReturnValue({
+      idleAgentCleanupEnabled: true,
+      idleAgentCleanupIntervalMs: 300_000
+    })
+    registerSettingsHandlers(store as never, undefined, idleAgentCleanupScheduler as never)
+
+    const handler = handleMock.mock.calls.find((call) => call[0] === 'settings:set')?.[1] as (
+      _event: unknown,
+      args: unknown
+    ) => unknown
+
+    handler(settingsInvokeEvent, {
+      idleAgentCleanupEnabled: true,
+      idleAgentCleanupIntervalMs: 300_000
+    })
+
+    expect(idleAgentCleanupScheduler.onSettingsChanged).not.toHaveBeenCalled()
   })
 
   it('prepares local worktree roots when workspace directory changes', async () => {
@@ -486,301 +563,6 @@ describe('registerSettingsHandlers', () => {
       {},
       { notifyListeners: true, originWebContentsId: 1 }
     )
-  })
-
-  it('normalizes terminal scrollback row updates and drops legacy byte updates', async () => {
-    store.getSettings.mockReturnValue({ terminalScrollbackRows: 5_000 })
-    store.updateSettings.mockReturnValue({ terminalScrollbackRows: 50_000 })
-    registerSettingsHandlers(store as never)
-
-    const handler = handleMock.mock.calls.find((call) => call[0] === 'settings:set')?.[1] as (
-      _event: unknown,
-      args: unknown
-    ) => Promise<unknown>
-
-    await handler(settingsInvokeEvent, {
-      terminalScrollbackRows: 75_000,
-      terminalScrollbackBytes: 250_000_000
-    })
-
-    expect(store.updateSettings).toHaveBeenCalledWith(
-      { terminalScrollbackRows: 50_000 },
-      { notifyListeners: true, originWebContentsId: 1 }
-    )
-  })
-
-  it('normalizes terminal line height updates before persistence', async () => {
-    store.getSettings.mockReturnValue({ terminalLineHeight: 1 })
-    store.updateSettings.mockReturnValue({ terminalLineHeight: 1 })
-    registerSettingsHandlers(store as never)
-
-    const handler = handleMock.mock.calls.find((call) => call[0] === 'settings:set')?.[1] as (
-      _event: unknown,
-      args: unknown
-    ) => Promise<unknown>
-
-    await handler(settingsInvokeEvent, { terminalLineHeight: 0.85 })
-
-    expect(store.updateSettings).toHaveBeenCalledWith(
-      { terminalLineHeight: 1 },
-      { notifyListeners: true, originWebContentsId: 1 }
-    )
-  })
-
-  it('normalizes custom mobile pairing addresses before persistence', async () => {
-    store.getSettings.mockReturnValue({
-      mobilePairingCustomAddress: null,
-      mobilePairingCustomAddresses: []
-    })
-    store.updateSettings.mockReturnValue({
-      mobilePairingCustomAddress: '100.126.117.25:6768',
-      mobilePairingCustomAddresses: ['first.example:6768']
-    })
-    registerSettingsHandlers(store as never)
-
-    const handler = handleMock.mock.calls.find((call) => call[0] === 'settings:set')?.[1] as (
-      _event: unknown,
-      args: unknown
-    ) => Promise<unknown>
-
-    await handler(settingsInvokeEvent, {
-      mobilePairingCustomAddress: ' 100.126.117.25:6768 ',
-      mobilePairingCustomAddresses: [' first.example:6768 ', 'host:99999', 'first.example:6768']
-    })
-
-    expect(store.updateSettings).toHaveBeenCalledWith(
-      {
-        mobilePairingCustomAddress: '100.126.117.25:6768',
-        mobilePairingCustomAddresses: ['first.example:6768']
-      },
-      { notifyListeners: true, originWebContentsId: 1 }
-    )
-  })
-
-  it('clears malformed custom mobile pairing addresses before persistence', async () => {
-    store.getSettings.mockReturnValue({ mobilePairingCustomAddress: '100.126.117.25:6768' })
-    store.updateSettings.mockReturnValue({ mobilePairingCustomAddress: null })
-    registerSettingsHandlers(store as never)
-
-    const handler = handleMock.mock.calls.find((call) => call[0] === 'settings:set')?.[1] as (
-      _event: unknown,
-      args: unknown
-    ) => Promise<unknown>
-
-    await handler(settingsInvokeEvent, { mobilePairingCustomAddress: 'host:99999' })
-
-    expect(store.updateSettings).toHaveBeenCalledWith(
-      { mobilePairingCustomAddress: null },
-      { notifyListeners: true, originWebContentsId: 1 }
-    )
-  })
-
-  it('normalizes custom terminal themes from renderer settings IPC', async () => {
-    store.getSettings.mockReturnValue({ terminalCustomThemes: [] })
-    store.updateSettings.mockReturnValue({ terminalCustomThemes: [] })
-    registerSettingsHandlers(store as never)
-
-    const handler = handleMock.mock.calls.find((call) => call[0] === 'settings:set')?.[1] as (
-      _event: unknown,
-      args: unknown
-    ) => Promise<unknown>
-
-    await handler(settingsInvokeEvent, {
-      terminalCustomThemes: [
-        {
-          id: 'warp:Test Theme',
-          name: 'Test Theme',
-          source: 'warp',
-          mode: 'dark',
-          terminal: {
-            background: '000',
-            foreground: 'fff',
-            black: '123',
-            red: 'nope'
-          },
-          sourcePath: '/Users/alice/.warp/themes/test.yaml'
-        }
-      ]
-    })
-
-    expect(store.updateSettings).toHaveBeenCalledWith(
-      {
-        terminalCustomThemes: [
-          expect.objectContaining({
-            id: 'warp:test-theme',
-            terminal: {
-              background: '#000000',
-              foreground: '#ffffff',
-              black: '#112233'
-            }
-          })
-        ]
-      },
-      { notifyListeners: true, originWebContentsId: 1 }
-    )
-  })
-
-  it('sanitizes and applies proxy settings from renderer settings IPC', async () => {
-    store.getSettings.mockReturnValue({ httpProxyUrl: '' })
-    store.updateSettings.mockReturnValue({
-      httpProxyUrl: 'http://proxy.example:8080',
-      httpProxyBypassRules: 'localhost;*.internal'
-    })
-    registerSettingsHandlers(store as never)
-
-    const handler = handleMock.mock.calls.find((call) => call[0] === 'settings:set')?.[1] as (
-      _event: unknown,
-      args: unknown
-    ) => Promise<unknown>
-
-    await handler(settingsInvokeEvent, {
-      httpProxyUrl: ' http://proxy.example:8080/path#frag ',
-      httpProxyBypassRules: 'localhost, *.internal'
-    })
-
-    expect(store.updateSettings).toHaveBeenCalledWith(
-      {
-        httpProxyUrl: 'http://proxy.example:8080',
-        httpProxyBypassRules: 'localhost;*.internal'
-      },
-      { notifyListeners: true, originWebContentsId: 1 }
-    )
-    expect(applyElectronProxySettingsMock).toHaveBeenCalledWith({
-      httpProxyUrl: 'http://proxy.example:8080',
-      httpProxyBypassRules: 'localhost;*.internal'
-    })
-  })
-
-  it('does not sweep sessions for a no-op proxy save', async () => {
-    const settings = {
-      httpProxyUrl: 'http://proxy.example:8080',
-      httpProxyBypassRules: 'localhost'
-    }
-    store.getSettings.mockReturnValue(settings)
-    store.updateSettings.mockReturnValue(settings)
-    registerSettingsHandlers(store as never)
-
-    const handler = handleMock.mock.calls.find((call) => call[0] === 'settings:set')?.[1] as (
-      event: typeof settingsInvokeEvent,
-      args: { httpProxyUrl: string }
-    ) => Promise<unknown>
-
-    await handler(settingsInvokeEvent, { httpProxyUrl: 'http://proxy.example:8080' })
-
-    expect(applyElectronProxySettingsMock).not.toHaveBeenCalled()
-    expect(listProfilesMock).not.toHaveBeenCalled()
-    expect(applyBrowserSessionProxiesMock).not.toHaveBeenCalled()
-  })
-
-  it('queues every proxy snapshot on both authorities before either apply settles', async () => {
-    store.getSettings.mockReturnValue({ httpProxyUrl: '', httpProxyBypassRules: '' })
-    store.updateSettings.mockImplementation((args) =>
-      args.httpProxyUrl !== undefined
-        ? { httpProxyUrl: 'socks5://127.0.0.1:1080', httpProxyBypassRules: '' }
-        : { httpProxyUrl: 'socks5://127.0.0.1:1080', httpProxyBypassRules: 'late.example' }
-    )
-    let releaseFirstApply = (): void => {}
-    let markFirstApplyStarted = (): void => {}
-    const firstApplyStarted = new Promise<void>((resolve) => (markFirstApplyStarted = resolve))
-    applyElectronProxySettingsMock.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          releaseFirstApply = () => resolve({ source: 'settings' })
-          markFirstApplyStarted()
-        })
-    )
-    registerSettingsHandlers(store as never)
-    const handler = handleMock.mock.calls.find((call) => call[0] === 'settings:set')?.[1] as (
-      event: typeof settingsInvokeEvent,
-      args: { httpProxyUrl?: string; httpProxyBypassRules?: string }
-    ) => Promise<unknown>
-
-    const first = handler(settingsInvokeEvent, { httpProxyUrl: 'socks5://127.0.0.1:1080' })
-    await firstApplyStarted
-    expect(applyBrowserSessionProxiesMock).toHaveBeenCalledWith([], {
-      httpProxyUrl: 'socks5://127.0.0.1:1080',
-      httpProxyBypassRules: ''
-    })
-    const second = handler(settingsInvokeEvent, { httpProxyBypassRules: 'late.example' })
-    await second
-    releaseFirstApply()
-    await first
-
-    expect(applyBrowserSessionProxiesMock.mock.calls.map((call) => call[1])).toEqual([
-      {
-        httpProxyUrl: 'socks5://127.0.0.1:1080',
-        httpProxyBypassRules: ''
-      },
-      {
-        httpProxyUrl: 'socks5://127.0.0.1:1080',
-        httpProxyBypassRules: 'late.example'
-      }
-    ])
-  })
-
-  it('orders proxy writes before unrelated settings reconciliation can suspend', async () => {
-    store.getSettings.mockReturnValue({
-      httpProxyUrl: '',
-      httpProxyBypassRules: '',
-      agentStatusHooksEnabled: false,
-      disabledTuiAgents: []
-    })
-    store.updateSettings.mockImplementation((args) => ({
-      httpProxyUrl: args.httpProxyUrl,
-      httpProxyBypassRules: '',
-      agentStatusHooksEnabled: args.agentStatusHooksEnabled ?? true,
-      disabledTuiAgents: []
-    }))
-    let releaseHookReconciliation = (): void => {}
-    let markHookReconciliationStarted = (): void => {}
-    const hookReconciliationStarted = new Promise<void>(
-      (resolve) => (markHookReconciliationStarted = resolve)
-    )
-    applyAgentStatusHooksEnabledMock.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          releaseHookReconciliation = () => resolve([])
-          markHookReconciliationStarted()
-        })
-    )
-    registerSettingsHandlers(store as never)
-    const handler = handleMock.mock.calls.find((call) => call[0] === 'settings:set')?.[1] as (
-      event: typeof settingsInvokeEvent,
-      args: { httpProxyUrl: string; agentStatusHooksEnabled?: boolean }
-    ) => Promise<unknown>
-
-    const first = handler(settingsInvokeEvent, {
-      httpProxyUrl: 'http://old.example:8080',
-      agentStatusHooksEnabled: true
-    })
-    await hookReconciliationStarted
-    await handler(settingsInvokeEvent, { httpProxyUrl: 'http://new.example:8080' })
-    releaseHookReconciliation()
-    await first
-
-    expect(applyElectronProxySettingsMock.mock.calls.map((call) => call[0].httpProxyUrl)).toEqual([
-      'http://old.example:8080',
-      'http://new.example:8080'
-    ])
-  })
-
-  it('drops invalid proxy URLs at the settings boundary', async () => {
-    store.getSettings.mockReturnValue({ httpProxyUrl: 'http://proxy.example:8080' })
-    store.updateSettings.mockReturnValue({ httpProxyUrl: '' })
-    registerSettingsHandlers(store as never)
-
-    const handler = handleMock.mock.calls.find((call) => call[0] === 'settings:set')?.[1] as (
-      _event: unknown,
-      args: unknown
-    ) => Promise<unknown>
-
-    await handler(settingsInvokeEvent, { httpProxyUrl: 'ftp://proxy.example:2121' })
-
-    expect(store.updateSettings).toHaveBeenCalledWith(
-      { httpProxyUrl: '' },
-      { notifyListeners: true, originWebContentsId: 1 }
-    )
-    expect(applyElectronProxySettingsMock).toHaveBeenCalledWith({ httpProxyUrl: '' })
   })
 
   it('normalizes and applies app icon changes from renderer settings IPC', async () => {

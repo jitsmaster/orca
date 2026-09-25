@@ -393,6 +393,6 @@ describe('Terminal workbench surface feed', () => {
       'workspace-surface-projection.ts'
     ])
     expect(source.split('projectWorkspaceSurfaces(').length - 1).toBe(1)
-    expect(source).toContain('worktreesById,\n        folderWorkspaces,')
+    expect(source).toContain('worktreesById,\n      folderWorkspaces,')
   })
 })

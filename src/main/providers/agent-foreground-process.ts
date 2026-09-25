@@ -7,6 +7,7 @@ import {
   getProcessTableSnapshot
 } from '../../shared/process-table-snapshot-reader'
 import { collectDescendantsFromIndex, getProcessTableIndex } from '../../shared/process-table-index'
+import { recordPaneDescendantObservation } from '../idle-agent-cleanup/pane-descendant-observation'
 import {
   resolveWindowsAgentForegroundProcessWithAvailability,
   shouldInspectWindowsAgentForeground,
@@ -152,6 +153,14 @@ export async function resolveAgentForegroundProcessWithAvailability(
     const rows = options.fresh
       ? await getFreshProcessTableSnapshot()
       : await getProcessTableSnapshot()
+    if (options.paneId) {
+      recordPaneDescendantObservation(
+        options.paneId,
+        shellPid,
+        rows,
+        options.isPaneObservationStillCurrent
+      )
+    }
     if (options.fresh && !getProcessTableIndex(rows).byPid.has(shellPid)) {
       return { available: false, processName: fallbackProcess }
     }

@@ -89,6 +89,8 @@ export type WindowsPaneProcessInventory = {
    * descendant walk yet can still hold a recycled anchor pid.
    */
   anchorRow: WindowsProcessRow | null
+  /** Full-table row for `rootPid` (the pane's shell) — feeds the idle-agent-cleanup pane-lineage fallback. */
+  rootRow: WindowsProcessRow | null
 }
 
 export async function queryWindowsPaneProcessInventory(
@@ -116,7 +118,9 @@ export async function queryWindowsPaneProcessInventory(
   }
   return {
     candidates: collectDescendantsFromIndex(index, rootPid).sort((a, b) => b.depth - a.depth),
-    anchorRow: options.anchorPid !== undefined ? (index.byPid.get(options.anchorPid) ?? null) : null
+    anchorRow:
+      options.anchorPid !== undefined ? (index.byPid.get(options.anchorPid) ?? null) : null,
+    rootRow: index.byPid.get(rootPid) ?? null
   }
 }
 

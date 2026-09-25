@@ -37,20 +37,45 @@ export function useTerminalWorkspaceFoundation() {
     parseWorkspaceKey(renderedActiveWorktreeId ?? '')?.type === 'folder'
       ? activeWorktreeDeferralHostId
       : null
+  const detectedWorktreesByRepo = useAppStore((state) => state.detectedWorktreesByRepo)
   // Why gate the id on the host: the projection reads `activeWorkspaceId` only behind a
   // truthy resolved host, so without one every active id yields the same surfaces — and a
   // worktree switch must not re-project (and re-identify) every surface to rediscover that.
   const activeFolderSurfaceId = activeFolderSurfaceHostId ? renderedActiveWorktreeId : null
-  const workspaceSurfaces = useMemo(
-    () =>
-      projectWorkspaceSurfaces({
-        worktreesById,
-        folderWorkspaces,
-        activeWorkspaceId: activeFolderSurfaceId,
-        activeWorkspaceResolvedHostId: activeFolderSurfaceHostId
-      }),
-    [worktreesById, folderWorkspaces, activeFolderSurfaceId, activeFolderSurfaceHostId]
-  )
+  const workspaceSurfaces = useMemo(() => {
+    const surfaces = projectWorkspaceSurfaces({
+      worktreesById,
+      folderWorkspaces,
+      activeWorkspaceId: activeFolderSurfaceId,
+      activeWorkspaceResolvedHostId: activeFolderSurfaceHostId
+    })
+    // Why: Source Control can activate a worktree Orca has only detected but never
+    // registered (e.g. one nested under another worktree's own worktree folder) so its
+    // diff can be viewed. Without a surface for it here, the active worktree has nowhere
+    // to mount and the whole workspace renders blank (#diff-black-screen).
+    if (
+      renderedActiveWorktreeId &&
+      !surfaces.some((surface) => surface.id === renderedActiveWorktreeId)
+    ) {
+      for (const result of Object.values(detectedWorktreesByRepo)) {
+        const detected = result.worktrees.find(
+          (worktree) => worktree.id === renderedActiveWorktreeId
+        )
+        if (detected) {
+          surfaces.push({ id: detected.id, path: detected.path })
+          break
+        }
+      }
+    }
+    return surfaces
+  }, [
+    worktreesById,
+    folderWorkspaces,
+    activeFolderSurfaceId,
+    activeFolderSurfaceHostId,
+    renderedActiveWorktreeId,
+    detectedWorktreesByRepo
+  ])
   // Why split the ids out: every mount/park/activation pass reads only `.id`, but
   // the surface array is re-identified on any worktree write. Reusing the previous
   // id-array identity keeps those effects and their per-fire Sets from re-firing

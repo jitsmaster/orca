@@ -1,4 +1,5 @@
 import { app } from 'electron'
+import { createRegisterOnceGuard } from '../register-once-guard'
 import { registerAppHandlers } from '../app'
 import { registerCliHandlers } from '../cli'
 import { registerPreflightHandlers } from '../preflight'
@@ -78,6 +79,7 @@ import type { CodexAccountService } from '../../codex-accounts/service'
 import type { ClaudeAccountService } from '../../claude-accounts/service'
 import type { AutomationService } from '../../automations/service'
 import type { AgentAwakeService } from '../../agent-awake-service'
+import type { IdleAgentCleanupScheduler } from '../../idle-agent-cleanup/idle-agent-cleanup-scheduler'
 import type { CrashReportStore } from '../../crash-reporting/crash-report-store'
 import type { KeybindingService } from '../../keybindings/keybinding-service'
 import type {
@@ -94,7 +96,7 @@ import { callRuntimeSessionSearch } from '../../ai-vault/runtime-session-search-
 import type { PluginService } from '../../plugins/plugin-service'
 import type { PluginMarketplaceHandlerServices } from '../plugin-marketplaces'
 
-let registered = false
+const hasRegistered = createRegisterOnceGuard()
 
 type CoreHandlerLifecycleOptions = {
   onBeforeRelaunch?: () => void | Promise<void>
@@ -124,20 +126,20 @@ export function registerCoreHandlers(
   keybindings?: KeybindingService,
   lifecycleOptions: CoreHandlerLifecycleOptions = {},
   pluginService?: PluginService,
-  marketplaceServices?: PluginMarketplaceHandlerServices
+  marketplaceServices?: PluginMarketplaceHandlerServices,
+  idleAgentCleanupScheduler?: IdleAgentCleanupScheduler
 ): void {
   // Why: on macOS the app can stay alive after all windows close, then
-  // openMainWindow() is called again on 'activate'. ipcMain.handle() throws
-  // if a channel is registered twice, so we guard to register only once and
-  // just update the per-window web-contents ID on subsequent calls.
+  // openMainWindow() is called again on 'activate'. The guard below registers
+  // handlers only once; the calls above still run every time so the
+  // per-window web-contents ID stays current.
   setTrustedBrowserRendererWebContentsId(mainWindowWebContentsId)
   setTrustedClipboardRendererWebContentsId(mainWindowWebContentsId)
   setTrustedUIRendererWebContentsId(mainWindowWebContentsId)
   setAgentBrowserBridgeRef(runtime.getAgentBrowserBridge())
-  if (registered) {
+  if (!hasRegistered()) {
     return
   }
-  registered = true
 
   registerAppHandlers(store, { onBeforeRelaunch: lifecycleOptions.onBeforeRelaunch })
   registerCliHandlers()
@@ -177,7 +179,7 @@ export function registerCoreHandlers(
   registerDiagnosticsHandlers()
   registerTerminalRenderDesyncEvidenceHandler()
   registerComputerUsePermissionHandlers()
-  registerSettingsHandlers(store, agentAwakeService)
+  registerSettingsHandlers(store, agentAwakeService, idleAgentCleanupScheduler)
   registerSkillsHandlers(store, runtime)
   registerSkillDeleteIpcHandlers(store, runtime)
   if (automations) {

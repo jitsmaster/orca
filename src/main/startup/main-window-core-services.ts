@@ -1,5 +1,6 @@
 import type { BrowserWindow } from 'electron'
 import { registerCoreHandlers } from '../ipc/register-core-handlers/register-core-handlers'
+import { registerIdleAgentCleanupHandlers } from '../ipc/idle-agent-cleanup'
 import { attachMainWindowServices } from '../window/attach-main-window-services'
 import { initTccPromptNotice } from '../macos-tcc-prompt-notice'
 import { resolveUpdateInstallMode } from '../updater'
@@ -99,8 +100,10 @@ export function attachMainWindowCoreServices(
     state.pluginService ?? undefined,
     state.pluginMarketplaceService && state.pluginMarketplaceInstaller
       ? { marketplace: state.pluginMarketplaceService, installer: state.pluginMarketplaceInstaller }
-      : undefined
+      : undefined,
+    state.idleAgentCleanupScheduler ?? undefined
   )
+  registerIdleAgentCleanupHandlers(state.idleAgentCleanupLogStore!)
   automations.setWebContents(window.webContents)
   automations.start()
   attachMainWindowServices(

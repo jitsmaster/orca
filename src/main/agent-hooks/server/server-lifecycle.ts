@@ -95,6 +95,25 @@ export abstract class AgentHookServerLifecycle extends AgentHookServerRuntimeEnv
         trackEmptyPaneKeyHook(hookBody)
         const aliasedBody = this.normalizeHookBodyPaneKeyAlias(hookBody)
         const normalized = this.normalizeLocalHookPayload(source, aliasedBody)
+        if (
+          normalized.event?.source === 'claude' &&
+          normalized.event.hookEventName === 'PostToolUse' &&
+          typeof normalized.event.cwd === 'string'
+        ) {
+          // Why: cheap pre-filter mirrors claude-worktree-tool-target.ts's PostToolUse-only gate —
+          // resolving cwd against the worktree catalog is async store work, so it runs only on
+          // completed tool calls, not every hook event. Fires independently of applyNormalizedStatus
+          // so a status-suppressed event still reports its (possibly changed) cwd.
+          // Why: only this live HTTP ingest path invokes the listener — spooled/replayed events
+          // drained on startup never trigger it, so after a restart a tab's picker stays on its
+          // last-known worktree until the next live PostToolUse. Accepted: the signal is
+          // deliberately ephemeral/live-only, never persisted.
+          this.onClaudeLiveWorktreeCwd?.({
+            paneKey: normalized.event.paneKey,
+            tabId: normalized.event.tabId,
+            cwd: normalized.event.cwd
+          })
+        }
         const statusDisposition = normalized.event
           ? this.getAgentStatusDisposition(normalized.event.paneKey, {
               source,

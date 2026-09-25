@@ -53,9 +53,10 @@ describe('useSourceControlViewWorktreeSelection', () => {
     expect(screen.getByTestId('subject').textContent).toBe('wt-b')
   })
 
-  it('keeps the pin when the app-active worktree switches within the same repo', () => {
+  it('clears the pin when the app-active worktree switches, even within the same repo', () => {
     render(<Harness />)
     fireEvent.click(screen.getByText('pick'))
+    expect(screen.getByTestId('subject').textContent).toBe('wt-b')
     state.activeWorktreeId = 'wt-a2'
     // Why: real store updates replace the record identity; the memo keys on it.
     state.worktreesByRepo = {
@@ -65,7 +66,7 @@ describe('useSourceControlViewWorktreeSelection', () => {
     // Why: the mocked store is a plain object; bump React with a sibling update
     // so the subscription re-reads the new active id.
     fireEvent.click(screen.getByText('pick'))
-    expect(screen.getByTestId('subject').textContent).toBe('wt-b')
+    expect(screen.getByTestId('subject').textContent).toBe('wt-a2')
   })
 
   it('follows the app-active worktree when the active repo changes', () => {

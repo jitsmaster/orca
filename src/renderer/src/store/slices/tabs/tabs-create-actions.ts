@@ -4,6 +4,7 @@ import type { Tab, TabGroup } from '../../../../../shared/tab-types'
 import type { TabsSlice, TabsSliceGet, TabsSliceSet } from './tabs-slice-contract'
 import { buildActiveSurfacePatch } from './tabs-surface'
 import { buildSplitNode, replaceLeaf } from './tabs-layout'
+import { pruneTabGroupLayoutForGroups } from '../tabs-hydration'
 import {
   dedupeTabOrder,
   ensureGroup,
@@ -82,6 +83,20 @@ export function createTabsCreateActions(
         const nextRecent = shouldActivate
           ? pushRecentTabId(sanitizedRecent, created.id)
           : sanitizedRecent
+        const nextGroupsForWorktree = updateGroup(groupsByWorktree[worktreeId] ?? [], {
+          ...group,
+          activeTabId: nextActiveTabId,
+          tabOrder: nextOrder,
+          recentTabIds: nextRecent
+        })
+        // Why: a worktree can carry a leftover layout leaf for a group that no longer
+        // exists (#diff-black-screen) — prune it before falling back, or the render
+        // tree keeps pointing at a dead group and paints nothing.
+        const validGroupIds = new Set(nextGroupsForWorktree.map((candidate) => candidate.id))
+        const existingLayout = state.layoutByWorktree[worktreeId]
+        const prunedLayout = existingLayout
+          ? pruneTabGroupLayoutForGroups(existingLayout, validGroupIds)
+          : null
         return {
           unifiedTabsByWorktree: {
             ...state.unifiedTabsByWorktree,
@@ -89,17 +104,12 @@ export function createTabsCreateActions(
           },
           groupsByWorktree: {
             ...groupsByWorktree,
-            [worktreeId]: updateGroup(groupsByWorktree[worktreeId] ?? [], {
-              ...group,
-              activeTabId: nextActiveTabId,
-              tabOrder: nextOrder,
-              recentTabIds: nextRecent
-            })
+            [worktreeId]: nextGroupsForWorktree
           },
           activeGroupIdByWorktree,
           layoutByWorktree: {
             ...state.layoutByWorktree,
-            [worktreeId]: state.layoutByWorktree[worktreeId] ?? { type: 'leaf', groupId: group.id }
+            [worktreeId]: prunedLayout ?? { type: 'leaf', groupId: group.id }
           }
         }
       })

@@ -2,16 +2,9 @@ import type * as pty from 'node-pty'
 import { getAgentForegroundContextPaths } from '../../providers/agent-foreground-context-paths'
 import { resolveAgentForegroundProcessWithAvailability } from '../../providers/agent-foreground-process'
 import { confirmPtyShellForeground } from './pty-shell-foreground-confirmation'
-import {
-  judgeCachedAgentJobEvidence,
-  WINDOWS_DETACHED_DESCENDANT_IDENTITY_MAX_AGE_MS
-} from '../../providers/windows-cached-agent-revalidation'
-import {
-  isWindowsPtyJobReadable,
-  readWindowsPtyJobProcessIds
-} from '../../providers/windows-pty-job-membership'
-
+import { WINDOWS_DETACHED_DESCENDANT_IDENTITY_MAX_AGE_MS } from '../../providers/windows-cached-agent-revalidation'
 import { readWindowsConsoleAttachedProcessIds } from '../../providers/windows-console-attached-processes'
+import { resolveWindowsAgentJobAction } from './foreground-job-verdict-action'
 import {
   isAgentForegroundWrapperProcess,
   recognizeAgentProcess,
@@ -140,6 +133,8 @@ export function createPtyForegroundProcessTracker(args: {
     const anchor = cachedAgentForeground
     void resolveAgentForegroundProcessWithAvailability(proc.pid, fallbackProcess, {
       contextPaths,
+      paneId: args.sessionId,
+      isPaneObservationStillCurrent: () => !args.isDead(),
       ...(anchor?.pid != null
         ? { anchorProcessId: anchor.pid, anchorProcessName: anchor.processName }
         : {})
@@ -151,43 +146,21 @@ export function createPtyForegroundProcessTracker(args: {
         if (!processName || !recognizeAgentProcess(processName)) {
           if (process.platform === 'win32' && fallbackIsShell && cachedAgentForeground !== null) {
             // Job, not console: needs no console attachment, so no fork (#10857).
-            const verdict = judgeCachedAgentJobEvidence({
-              jobProcessIds: readWindowsPtyJobProcessIds(proc),
-              jobSupported: isWindowsPtyJobReadable(),
-              shellPid: proc.pid,
-              anchorProcessId: cachedAgentForeground.pid,
-              identityAgeMs: Date.now() - cachedAgentForeground.refreshedAt
+            const action = resolveWindowsAgentJobAction({
+              proc,
+              cachedAgentPid: cachedAgentForeground.pid,
+              cachedAgentRefreshedAt: cachedAgentForeground.refreshedAt,
+              anchorPidForeign
             })
-            // Unverifiable is never exit proof (ssh-execution-boundary.md): hold.
-            if (verdict === 'unavailable') {
+            if (action === 'hold') {
               return
             }
-            if (verdict === 'unsupported') {
-              // No job to consult on this build, and the scan that got here was
-              // available and found no agent. Trust it, as every other platform
-              // does, rather than holding a dead name forever (#16059).
-              retireStaleForegroundIdentity()
-              return
-            }
-            if (verdict === 'confirmed' || verdict === 'recheck') {
-              if (anchorPidForeign === true) {
-                // The scan proved the pid recycled to a non-agent: retire now.
-                retireStaleForegroundIdentity()
-                return
-              }
-              // The anchor pid is still in the job: the scan lost the row, not
-              // the agent. Restamp so a live agent never ages out (#9258).
+            if (action === 'restamp') {
+              // Restamp so a live agent never ages out (#9258).
               cachedAgentForeground = { ...cachedAgentForeground, refreshedAt: Date.now() }
               return
             }
-            if (verdict === 'exited' || verdict === 'anchor-exited') {
-              // Safe mid-restart: an available scan already found no agent.
-              retireStaleForegroundIdentity()
-              return
-            }
-            // Unanchored superset evidence cannot tell a working agent from a
-            // leftover; the age bound settles it.
-            retireStaleForegroundIdentity({ onlyWhenAged: true })
+            retireStaleForegroundIdentity({ onlyWhenAged: action === 'retire-if-aged' })
             return
           }
           retireStaleForegroundIdentity()
@@ -284,6 +257,8 @@ export function createPtyForegroundProcessTracker(args: {
           fallbackProcess,
           {
             contextPaths,
+            paneId: args.sessionId,
+            isPaneObservationStillCurrent: () => !args.isDead(),
             fresh: true,
             ...(process.platform === 'win32'
               ? {

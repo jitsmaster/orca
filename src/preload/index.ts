@@ -34,6 +34,7 @@ import { starNagApi } from './api/star-nag-bridge'
 import { diagnosticsApi } from './api/diagnostics-bridge'
 import { settingsApi } from './api/settings-bridge'
 import { agentAwakeApi } from './api/agent-awake-bridge'
+import { idleAgentCleanupApi } from './api/idle-agent-cleanup-bridge'
 import { localhostWorktreeLabelsApi } from './api/localhost-worktree-labels-bridge'
 import { keybindingsApi } from './api/keybindings-bridge'
 import { codexAccountsApi } from './api/codex-accounts-bridge'
@@ -82,6 +83,7 @@ import { automationsApi } from './api/automations-bridge'
 import { e2eApi } from './api/e2e-bridge'
 import { mobileApi } from './api/mobile-bridge'
 import { agentStatusApi } from './api/agent-status-bridge'
+import { sourceControlLiveWorktreeApi } from './api/source-control-live-worktree-bridge'
 import { speechApi } from './api/speech-bridge'
 
 installNativeFileDropHandlers()
@@ -132,6 +134,7 @@ const api = {
   diagnostics: diagnosticsApi,
   settings: settingsApi,
   agentAwake: agentAwakeApi,
+  idleAgentCleanup: idleAgentCleanupApi,
   localhostWorktreeLabels: localhostWorktreeLabelsApi,
   keybindings: keybindingsApi,
   codexAccounts: codexAccountsApi,
@@ -180,6 +183,7 @@ const api = {
   e2e: e2eApi,
   mobile: mobileApi,
   agentStatus: agentStatusApi,
+  sourceControlLiveWorktree: sourceControlLiveWorktreeApi,
   speech: speechApi
 } satisfies PreloadApi
 

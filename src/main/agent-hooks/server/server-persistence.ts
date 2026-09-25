@@ -45,6 +45,8 @@ export abstract class AgentHookServerPersistence extends AgentHookServerHydratio
         // A terminal handle belongs to the runtime that issued it; a hydrated one could only
         // rejoin a row to somebody else's terminal.
         terminalHandle: _terminalHandle,
+        // Why: live signal only, never durable truth.
+        cwd: _cwd,
         launchToken,
         ...persistedPayload
       } = enrichedPayload

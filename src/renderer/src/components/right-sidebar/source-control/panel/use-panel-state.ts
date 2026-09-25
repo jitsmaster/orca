@@ -4,6 +4,7 @@ import { useSourceControlStoreActions } from '../listing/use-store-actions'
 import { useSourceControlWorktreeContext } from '../listing/use-worktree-context'
 import { useSourceControlBranchLineTotalGate } from '../sync/use-branch-line-total-gate'
 import { useSourceControlStatusRefresh } from '../sync/use-status-refresh'
+import { useActiveTabLiveWorktreeId } from './use-active-tab-live-worktree'
 import { useSourceControlPanelViewState } from './use-panel-view-state'
 import { useSourceControlViewWorktreeSelection } from './use-source-control-view-worktree-selection'
 import { useSourceControlWorktreeOperationState } from './use-worktree-operation-state'
@@ -24,6 +25,7 @@ export function useSourceControlPanelState() {
     activeWorktree,
     activeWorktreeId,
     activeWorktreeInstanceId,
+    appActiveWorktreeId,
     branchSummary,
     conflictOperationsByWorktree,
     isBranchVisible,
@@ -32,6 +34,19 @@ export function useSourceControlPanelState() {
     worktreeMap,
     worktreePath
   } = context
+  // Why: the live worktree tracks the actually-focused tab, not a picker pin on another worktree.
+  const activeTabId = useAppStore(
+    (s) => (appActiveWorktreeId ? (s.getActiveTab(appActiveWorktreeId)?.id ?? null) : null)
+  )
+  const activeTabLiveWorktreeId = useActiveTabLiveWorktreeId(activeTabId)
+  // Why: reset during render instead of a useEffect, mirroring useSourceControlViewWorktreeSelection's
+  // own Windows IPC-storm avoidance pattern.
+  if (
+    activeTabLiveWorktreeId !== undefined &&
+    activeTabLiveWorktreeId !== selection.subjectWorktreeId
+  ) {
+    selection.setViewWorktreeId(activeTabLiveWorktreeId)
+  }
   // Why: view state is keyed to the shown worktree so picking another one starts with a fresh view.
   const viewState = useSourceControlPanelViewState({
     activeWorktreeId,

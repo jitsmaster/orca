@@ -18,6 +18,11 @@ import { ClaudeUsageStore } from '../claude-usage/store'
 import { CodexUsageStore } from '../codex-usage/store'
 import { OpenCodeUsageStore } from '../opencode-usage/store'
 import { installRepoMaintenanceIdleGate } from '../repo-maintenance-idle-gate'
+import { listDaemonRetainedPaneDescendants } from '../daemon/daemon-init'
+import { IdleAgentCleanupScheduler } from '../idle-agent-cleanup/idle-agent-cleanup-scheduler'
+import { runIdleAgentCleanupTick } from '../idle-agent-cleanup/idle-agent-cleanup-candidate-scan'
+import { IdleAgentCleanupLogStore } from '../idle-agent-cleanup/idle-agent-cleanup-log-store'
+import { createNotifyingIdleAgentCleanupLog } from '../ipc/idle-agent-cleanup'
 import { mainProcessState as state } from './main-process-state'
 
 export function initializeMainProcessObservers(): void {
@@ -35,6 +40,17 @@ export function initializeMainProcessObservers(): void {
   )
   // Why: start from empty — disk-hydrated status rows are UI continuity only; only this runtime's hook events keep the computer awake.
   state.agentAwakeService.setStatuses([])
+  state.idleAgentCleanupLogStore = IdleAgentCleanupLogStore.fromUserData()
+  state.idleAgentCleanupScheduler = new IdleAgentCleanupScheduler({
+    getSettings: () => store.getSettings(),
+    runTick: () =>
+      runIdleAgentCleanupTick(
+        store.getSettings(),
+        createNotifyingIdleAgentCleanupLog(state.idleAgentCleanupLogStore!),
+        { fetchDaemonRetainedPaneDescendants: listDaemonRetainedPaneDescendants }
+      )
+  })
+  state.idleAgentCleanupScheduler.start()
   state.uninstallRepoMaintenanceIdleGate = installRepoMaintenanceIdleGate({
     isQuitting: () => state.isQuitting,
     getWorkingAgentCount: () => state.agentAwakeService?.getWorkingAgentCount() ?? 0

@@ -38,6 +38,8 @@ export type PersistedAgentHookEventPayload = Omit<
   | 'observation'
   // Same: a terminal handle is issued by one runtime and means nothing to the next.
   | 'terminalHandle'
+  // Why: live signal only, never durable truth — Claude's cwd at hook time is ephemeral context.
+  | 'cwd'
 > & {
   launchTokenHash?: string
 }
@@ -135,3 +137,6 @@ export type NormalizedLocalHook = {
 
 export type ServerStatusLineListener = ((event: ClaudeStatusLineRateLimits) => void) | null
 export type ServerAgentStatusListener = ((payload: EnrichedAgentHookEventPayload) => void) | null
+export type ServerClaudeLiveWorktreeCwdListener =
+  | ((event: { paneKey: string; tabId?: string; cwd: string }) => void)
+  | null

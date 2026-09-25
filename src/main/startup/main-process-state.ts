@@ -34,6 +34,8 @@ import type { ensureActiveOrcaProfile } from '../orca-profiles/profile-index-sto
 import type { createWindowsShellPathHydration } from './windows-shell-path-hydration'
 import type { ServeOptions } from './main-process-serve'
 import type { HangDetectionMarker } from '../hang-watchdog/hang-detection-marker'
+import type { IdleAgentCleanupScheduler } from '../idle-agent-cleanup/idle-agent-cleanup-scheduler'
+import type { IdleAgentCleanupLogStore } from '../idle-agent-cleanup/idle-agent-cleanup-log-store'
 import { ServeReadinessPublisher } from '../server/serve-readiness'
 import { SkillShareDeepLinkState } from './skill-share-deep-link-state'
 import { OsOpenedMarkdownFileState } from './os-opened-markdown-files'
@@ -73,6 +75,12 @@ export const mainProcessState = {
   headlessBrowserDisplayAvailable: false,
   starNag: null as StarNagService | null,
   agentAwakeService: null as AgentAwakeService | null,
+  idleAgentCleanupScheduler: null as IdleAgentCleanupScheduler | null,
+  // Why one shared instance, not one per call site: each instance owns its own
+  // writeChain used to serialize writes to the same on-disk log file: a fresh
+  // instance per tick would give every tick an independent chain over that
+  // same file, discarding the serialization guarantee across ticks.
+  idleAgentCleanupLogStore: null as IdleAgentCleanupLogStore | null,
   uninstallRepoMaintenanceIdleGate: null as (() => Promise<void>) | null,
   repoMaintenanceShutdown: Promise.resolve() as Promise<void>,
   crashReports: null as CrashReportStore | null,

@@ -14,7 +14,8 @@ import {
   installDevParentSignalQuit,
   installDevParentWatchdog,
   patchPackagedProcessPath,
-  optOutOfHiddenPageWakeUpThrottling
+  optOutOfHiddenPageWakeUpThrottling,
+  optOutOfWindowsNativeOcclusionTracking
 } from './configure-process'
 import { installServeSupervisorDisconnectQuit } from '../serve-update-handoff'
 import {
@@ -311,6 +312,7 @@ export function runMainProcessPreflight(options: MainProcessPreflightOptions): b
   disableUnsupportedChromiumFeatures()
   // Why: unconditional — a GPU-fallback launch skips enableMainProcessGpuFeatures() below.
   optOutOfHiddenPageWakeUpThrottling()
+  optOutOfWindowsNativeOcclusionTracking()
   configureElectronNetworkCompatibility()
   enableRendererHeapHeadroom()
   maybeApplyGpuFallbackForThisLaunch()

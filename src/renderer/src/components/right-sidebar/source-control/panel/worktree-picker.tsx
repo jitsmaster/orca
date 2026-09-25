@@ -146,7 +146,10 @@ export function SourceControlWorktreePicker({
                     )}
                   />
                   <GitBranch
-                    className="size-3 shrink-0 text-muted-foreground"
+                    className={cn(
+                      'size-3 shrink-0 text-muted-foreground',
+                      worktree.isMainWorktree && 'opacity-0'
+                    )}
                     aria-hidden="true"
                   />
                   <div className="min-w-0 flex-1">

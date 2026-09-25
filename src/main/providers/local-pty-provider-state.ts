@@ -2,6 +2,7 @@ import type * as pty from 'node-pty'
 import type { PhysicalExitTracker } from '../../shared/physical-exit-tracker'
 import type { PtyStartupIngress } from '../../shared/pty-startup-ingress'
 import type { TerminalExitCause } from '../../shared/terminal-exit-cause'
+import { retainDescendantsOnPaneClose } from '../idle-agent-cleanup/pane-close-descendant-retention'
 import { normalizeLocalCallerSessionId } from './local-pty-launch-helpers'
 
 export type PtyShutdownOperation = {
@@ -116,6 +117,26 @@ export function runPtyCleanup(id: string): void {
  * Removes all local tracking state for a PTY id after teardown.
  */
 export function clearPtyState(id: string): void {
+  const proc = ptyProcesses.get(id)
+  if (proc) {
+    // Fire-and-forget: pane teardown is synchronous and must not block on a
+    // process-table scan for the idle-agent-cleanup grace-period retention.
+    // The call already catches its own process-table-read failures; this is
+    // a last-resort backstop, logged so an unexpected rejection isn't silent.
+    void retainDescendantsOnPaneClose(
+      id,
+      proc.pid,
+      // A respawn under this same stable id replaces the map entry before this
+      // scan resolves; if so, this stale result must not touch the new
+      // occupant's tracking. `undefined` also passes -- this teardown deletes
+      // its own entry synchronously below, so "nothing has claimed `id` yet"
+      // is the expected, safe case.
+      () => {
+        const current = ptyProcesses.get(id)
+        return current === undefined || current === proc
+      }
+    ).catch((error) => console.warn('[idle-agent-cleanup] retain-on-close failed', error))
+  }
   clearLocalPtyForceKillTimer(id)
   runPtyCleanup(id)
   disposePtyListeners(id)
