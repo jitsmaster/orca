@@ -52,7 +52,8 @@ function renderActionModel({
       hostedReviewReviewLabel: 'pull request',
       hasSuppressedGitHubPRState: suppressed,
       conflictOperation: 'unknown',
-      effectiveBaseRef: null
+      effectiveBaseRef: null,
+      isSubjectLinkedWorktree: false
     })
   ).result.current
 }
