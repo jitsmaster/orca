@@ -116,7 +116,6 @@ export type {
   ShutdownIfIdleRequest,
   DetachRequest,
   GetCwdRequest,
-  ClearScrollbackRequest,
   ShutdownRequest,
   PingRequest,
   GetRetainedPaneDescendantsRequest,
@@ -125,7 +124,8 @@ export type {
   SystemResolverHealthRequest,
   PtySpawnHealthRequest,
   GetSnapshotRequest,
-  GetSizeRequest
+  GetSizeRequest,
+  TerminalBufferActionRequest
 } from './daemon-simple-request-protocol'
 import type {
   CloseStartupQueryAuthorityRequest,
@@ -141,14 +141,14 @@ import type {
   ShutdownIfIdleRequest,
   DetachRequest,
   GetCwdRequest,
-  ClearScrollbackRequest,
   ShutdownRequest,
   PingRequest,
   GetRetainedPaneDescendantsRequest,
   SystemResolverHealthRequest,
   PtySpawnHealthRequest,
   GetSnapshotRequest,
-  GetSizeRequest
+  GetSizeRequest,
+  TerminalBufferActionRequest
 } from './daemon-simple-request-protocol'
 
 // Incremental checkpoint record types live in daemon-pending-output-checkpoint.ts
@@ -180,7 +180,7 @@ export type DaemonRequest =
   | InspectProcessRequest
   | ConfirmForegroundProcessRequest
   | ConfirmShellForegroundRequest
-  | ClearScrollbackRequest
+  | TerminalBufferActionRequest
   | ShutdownRequest
   | PingRequest
   | GetRetainedPaneDescendantsRequest

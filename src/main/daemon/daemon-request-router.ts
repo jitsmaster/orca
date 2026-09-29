@@ -6,6 +6,7 @@ import type { DaemonPtySpawnPreparations } from './daemon-pty-spawn-preparations
 import type { DaemonServerLifecycle } from './daemon-server-lifecycle'
 import type { DaemonSessionAttachments } from './daemon-session-attachments'
 import type { DaemonSessionBackgroundRouting } from './daemon-session-background-routing'
+import { sendDaemonRequestExitEvent } from './daemon-request-router-exit-event'
 import { recordDaemonStreamBacklogEvent } from './daemon-stream-backlog-probe'
 import type { DaemonStreamDataBatcher } from './daemon-stream-data-batcher'
 import type { DaemonTerminalAdmission } from './daemon-terminal-admission'
@@ -130,6 +131,9 @@ export class DaemonRequestRouter {
       case 'clearScrollback':
         this.options.host.clearScrollback(request.payload.sessionId)
         return {}
+      case 'resetInputModes':
+        this.options.host.resetInputModes(request.payload.sessionId)
+        return {}
       case 'listSessions':
         return { sessions: this.options.host.listSessions() }
       case 'shutdownIfIdle':
@@ -181,7 +185,7 @@ export class DaemonRequestRouter {
     } catch (error) {
       this.options.attachments.clearInput(sessionId)
       if (error instanceof SessionNotFoundError) {
-        this.sendExitEvent(client, sessionId, -1)
+        sendDaemonRequestExitEvent(this.options.streamDataBatcher, client, sessionId, -1)
       }
       throw error
     }
@@ -198,7 +202,7 @@ export class DaemonRequestRouter {
       this.options.host.resize(sessionId, cols, rows)
     } catch (error) {
       if (error instanceof SessionNotFoundError) {
-        this.sendExitEvent(client, sessionId, -1)
+        sendDaemonRequestExitEvent(this.options.streamDataBatcher, client, sessionId, -1)
       }
       throw error
     }
@@ -292,22 +296,5 @@ export class DaemonRequestRouter {
       this.options.lifecycle.finishRpcShutdownWithoutReply(serverClose)
     }
     return {}
-  }
-
-  private sendExitEvent(
-    client: ConnectedDaemonClient | undefined,
-    sessionId: string,
-    code: number
-  ): void {
-    if (!client?.streamSocket) {
-      return
-    }
-    this.options.streamDataBatcher.enqueueControlEvent(client.clientId, sessionId, {
-      type: 'event',
-      event: 'exit',
-      sessionId,
-      payload: { code }
-    })
-    this.options.streamDataBatcher.flush(client.clientId)
   }
 }

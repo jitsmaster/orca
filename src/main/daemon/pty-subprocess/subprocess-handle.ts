@@ -10,8 +10,13 @@ import { isValidPtySize } from '../daemon-pty-size'
 import type { SubprocessHandle } from '../session-subprocess-handle'
 import { createPtyForegroundProcessTracker } from './foreground-process-tracker'
 import { PtyPreListenerEvents } from './pre-listener-events'
+import { ptyProcessNameIsSpawnFile } from './spawn-file-foreground-process'
+import { inspectSpawnFileWindowsChildProcesses } from './spawn-file-child-processes'
 
-type DisposableNativePty = pty.IPty & { destroy?: () => void }
+type DisposableNativePty = pty.IPty & {
+  destroy?: () => void
+  signalProcess?: (signal: string) => void
+}
 
 // Why a module-level map, not per-call state: sessionId is a stable pane-level
 // id that can be respawned onto a brand-new proc before this handle's own
@@ -35,7 +40,7 @@ export function createDaemonPtySubprocessHandle(args: {
   const proc = args.process
   currentProcBySessionId.set(args.sessionId, proc)
   // node-pty exposes destroy at runtime but omits it from IPty.
-  const nativeProc = proc as DisposableNativePty
+  const nativeProc: DisposableNativePty = proc
   const events = new PtyPreListenerEvents()
   let dead = false
   // I/O failure is not exit evidence; keep termination and producer flow control available.
@@ -94,6 +99,10 @@ export function createDaemonPtySubprocessHandle(args: {
   const slavePath = readPtySlavePath(proc)
   return {
     pid: proc.pid,
+    processNameIsSpawnFile: ptyProcessNameIsSpawnFile(proc),
+    ...(process.platform === 'win32'
+      ? { inspectChildProcesses: () => inspectSpawnFileWindowsChildProcesses(proc) }
+      : {}),
     shellPath: args.shellPath,
     shellCwd: args.spawnCwd,
     shellPathEnv: args.env.PATH,
@@ -194,6 +203,14 @@ export function createDaemonPtySubprocessHandle(args: {
     },
     signal: (sig) => {
       if (dead) {
+        return
+      }
+      if (nativeProc.signalProcess) {
+        try {
+          nativeProc.signalProcess(sig)
+        } catch {
+          /* The process may have exited. */
+        }
         return
       }
       const signalRootPid = (): void => {

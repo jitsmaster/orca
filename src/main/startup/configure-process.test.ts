@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -420,6 +420,22 @@ describe('configureElectronNetworkCompatibility', () => {
     return userDataPath
   }
 
+  function createProfileState(
+    userDataPath: string,
+    profileId: string,
+    settings: Record<string, unknown>
+  ): string {
+    const profileDirectory = join(userDataPath, 'profiles', profileId)
+    mkdirSync(profileDirectory, { recursive: true })
+    writeFileSync(
+      join(userDataPath, 'orca-profile-index.json'),
+      JSON.stringify({ activeProfileId: profileId, profiles: [{ id: profileId }] }),
+      'utf-8'
+    )
+    writeFileSync(join(profileDirectory, 'orca-data.json'), JSON.stringify({ settings }), 'utf-8')
+    return profileDirectory
+  }
+
   afterEach(() => {
     for (const dir of tempDirs.splice(0)) {
       rmSync(dir, { recursive: true, force: true })
@@ -502,6 +518,40 @@ describe('configureElectronNetworkCompatibility', () => {
     expect(
       shouldDisableHttp2ForElectronNetworking({ env: { ORCA_DISABLE_HTTP2: '0' }, userDataPath })
     ).toBe(false)
+  })
+
+  it('scopes a profile marker to the active profile before trusting it', async () => {
+    const { shouldDisableHttp2ForElectronNetworking } = await import('./configure-process')
+    const { writeHttp1CompatibilityMarker } = await import('./http1-compatibility-marker')
+    const userDataPath = mkdtempSync(join(tmpdir(), 'orca-http1-profile-'))
+    tempDirs.push(userDataPath)
+    createProfileState(userDataPath, 'profile-b', { electronHttp1CompatibilityMode: false })
+    writeHttp1CompatibilityMarker(userDataPath, true, 'profile-a')
+
+    expect(shouldDisableHttp2ForElectronNetworking({ env: {}, userDataPath })).toBe(false)
+  })
+
+  it('uses a matching profile marker even when the legacy JSON is stale', async () => {
+    const { shouldDisableHttp2ForElectronNetworking } = await import('./configure-process')
+    const { writeHttp1CompatibilityMarker } = await import('./http1-compatibility-marker')
+    const userDataPath = mkdtempSync(join(tmpdir(), 'orca-http1-profile-'))
+    tempDirs.push(userDataPath)
+    createProfileState(userDataPath, 'profile-b', { electronHttp1CompatibilityMode: false })
+    writeHttp1CompatibilityMarker(userDataPath, true, 'profile-b')
+
+    expect(shouldDisableHttp2ForElectronNetworking({ env: {}, userDataPath })).toBe(true)
+  })
+
+  it('fails closed when a profile database exists without a trusted marker', async () => {
+    const { shouldDisableHttp2ForElectronNetworking } = await import('./configure-process')
+    const userDataPath = mkdtempSync(join(tmpdir(), 'orca-http1-profile-'))
+    tempDirs.push(userDataPath)
+    const profileDirectory = createProfileState(userDataPath, 'profile-b', {
+      electronHttp1CompatibilityMode: true
+    })
+    writeFileSync(join(profileDirectory, 'profile-state.db'), 'sqlite-present', 'utf-8')
+
+    expect(shouldDisableHttp2ForElectronNetworking({ env: {}, userDataPath })).toBe(false)
   })
 
   it('appends Electron disable-http2 before sessions are created', async () => {
@@ -892,45 +942,8 @@ describe('safe graphics mode startup switches', () => {
     )
   })
 
-  describe('optOutOfWindowsNativeOcclusionTracking', () => {
-    const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform')
-
-    function setPlatform(platform: NodeJS.Platform): void {
-      Object.defineProperty(process, 'platform', { configurable: true, value: platform })
-    }
-
-    afterEach(() => {
-      if (originalPlatform) {
-        Object.defineProperty(process, 'platform', originalPlatform)
-      }
-    })
-
-    it('disables native window-occlusion tracking on win32', async () => {
-      const { app } = await import('electron')
-      const { optOutOfWindowsNativeOcclusionTracking } = await import('./configure-process')
-
-      setPlatform('win32')
-      vi.mocked(app.commandLine.appendSwitch).mockClear()
-      optOutOfWindowsNativeOcclusionTracking()
-
-      expect(app.commandLine.appendSwitch).toHaveBeenCalledWith(
-        'disable-features',
-        'CalculateNativeWinOcclusion'
-      )
-    })
-
-    it('does nothing on macOS/Linux', async () => {
-      const { app } = await import('electron')
-      const { optOutOfWindowsNativeOcclusionTracking } = await import('./configure-process')
-
-      for (const platform of ['darwin', 'linux'] as const) {
-        setPlatform(platform)
-        vi.mocked(app.commandLine.appendSwitch).mockClear()
-        optOutOfWindowsNativeOcclusionTracking()
-        expect(app.commandLine.appendSwitch).not.toHaveBeenCalled()
-      }
-    })
-  })
+  // optOutOfWindowsNativeOcclusionTracking is covered in
+  // windows-native-occlusion-tracking.test.ts (split out for file size).
 
   // Why: the defect was the call site, not the switch — a win32 safe-graphics launch runs
   // `if (!gpuFallbackActiveThisLaunch) enableMainProcessGpuFeatures()` and skips everything
