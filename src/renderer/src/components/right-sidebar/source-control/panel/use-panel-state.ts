@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useAppStore } from '@/store'
 import { useSourceControlDiffCommentNotes } from '../notes/use-diff-comment-notes'
 import { useSourceControlStoreActions } from '../listing/use-store-actions'
@@ -35,16 +36,23 @@ export function useSourceControlPanelState() {
     worktreePath
   } = context
   // Why: the live worktree tracks the actually-focused tab, not a picker pin on another worktree.
-  const activeTabId = useAppStore(
-    (s) => (appActiveWorktreeId ? (s.getActiveTab(appActiveWorktreeId)?.id ?? null) : null)
+  const activeTabId = useAppStore((s) =>
+    appActiveWorktreeId ? (s.getActiveTab(appActiveWorktreeId)?.id ?? null) : null
   )
   const activeTabLiveWorktreeId = useActiveTabLiveWorktreeId(activeTabId)
   // Why: reset during render instead of a useEffect, mirroring useSourceControlViewWorktreeSelection's
-  // own Windows IPC-storm avoidance pattern.
-  if (
-    activeTabLiveWorktreeId !== undefined &&
-    activeTabLiveWorktreeId !== selection.subjectWorktreeId
-  ) {
+  // own Windows IPC-storm avoidance pattern. Tracked against the last live id we actually applied,
+  // not against the derived subjectWorktreeId: that derived value falls back to the app-active
+  // worktree whenever the live target isn't in the known-worktree catalog yet (a real timing gap
+  // for a session that just landed in a not-yet-detected worktree), which would otherwise keep
+  // differing from activeTabLiveWorktreeId forever and re-fire setViewWorktreeId every render —
+  // an infinite render-time update loop that also starved the status-refresh effects below of a
+  // stable worktree id, and clobbered any manual picker selection on every pass.
+  const [appliedLiveWorktreeId, setAppliedLiveWorktreeId] = useState<string | undefined>(() =>
+    activeTabLiveWorktreeId === selection.subjectWorktreeId ? activeTabLiveWorktreeId : undefined
+  )
+  if (activeTabLiveWorktreeId !== undefined && activeTabLiveWorktreeId !== appliedLiveWorktreeId) {
+    setAppliedLiveWorktreeId(activeTabLiveWorktreeId)
     selection.setViewWorktreeId(activeTabLiveWorktreeId)
   }
   // Why: view state is keyed to the shown worktree so picking another one starts with a fresh view.
