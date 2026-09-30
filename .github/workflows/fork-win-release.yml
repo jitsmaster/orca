@@ -88,6 +88,12 @@ jobs:
           retry_wait_seconds: 30
           command: pnpm install --frozen-lockfile
 
+      # Why here: electron-builder's beforePack requires out/mobile-web, and the bundle
+      # build resolves React Native and Expo from mobile/node_modules. The root install
+      # above leaves mobile/node_modules empty since mobile/ is its own pnpm project
+      # (see pnpm-workspace.yaml) -- mirrors release-cut.yml's real Windows release job.
+      - uses: ./.github/actions/install-mobile-dependencies
+
       - name: Build Windows process-table addon for the relay
         shell: bash
         run: |
